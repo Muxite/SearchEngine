@@ -33,3 +33,7 @@ class Crawler:
     # load browser, get to starting point
     def start(self, starting_url):
         self.browser.get(starting_url)
+
+    def reverse(self):
+        # driver.back()
+        driver.execute_script("window.history.go(-1)")
