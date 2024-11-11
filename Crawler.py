@@ -3,6 +3,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait as wdw
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver import ActionChains
+from selenium.common.exceptions import StaleElementReferenceException
 import networkx as nx
 import time
 import matplotlib.pyplot as plt
@@ -48,50 +49,62 @@ class Crawler:
         wdw(self.browser, 10).until(
             ec.presence_of_element_located((By.XPATH, "/html/body"))
         )
-        time.sleep(1)
 
     def back(self):
         # browser.back()
         self.browser.execute_script("window.history.go(-1)")
 
-    def check_link(self, target_link):
-        return target_link in self.already_visited
-
     def click_link(self, link):
+        wdw(self.browser, 10).until(
+            ec.visibility_of(link)
+        )
         if link.is_displayed() and link.size['width'] > 0 and link.size['height'] > 0:
             try:
                 self.actions.click(link).perform()
                 return True
-            except Exception as error_code:
-                print(f"click error: {error_code}")
+            except:
+                # try it again lol
+                self.actions.click(link).perform()
+                return True
         else:
             return False
 
     # when it arrives at a new page, do this
-    def search(self, current):
+    # IMPORTANT: href != url
+    def search(self, old_node_id):
         self.wait_for_page_load()
-        current_node_id = self.already_visited.get(current, self.node_count)
-        self.graph.add_node(current_node_id, content=self.browser.find_element(By.XPATH, "/html/body").text)
+        # current_node_id = self.already_visited.get(current, self.node_count)
+        # self.graph.add_node(current_node_id, content=self.browser.find_element(By.XPATH, "/html/body").text)
 
         if self.node_count > self.stamina:
             return
 
         links = self.browser.find_elements(By.XPATH, '//a')
+        print(links)
         for link in links:
-            new = link.get_attribute('href')
-            if new and not self.check_link(new):
+            # go to the site, and check the url
+            href = link.get_attribute('href')
+            if href:
                 if self.click_link(link):
-                    new_node_id = self.node_count
-                    self.already_visited[new] = self.node_count
-                    self.graph.add_node(new_node_id)
-                    self.graph.add_edge(current_node_id, new_node_id)
-                    self.node_count += 1
-                    self.search(new)
+                    print(link)
+                    # find the url
+                    url = self.browser.current_url
+                    current_node_id = self.already_visited.get(url, self.node_count)
+                    # if not already visited, make a node
+                    if current_node_id == self.node_count:
+                        self.graph.add_node(current_node_id)
+                        self.graph.add_edge(old_node_id, current_node_id)
+                        self.already_visited[url] = current_node_id
+                        self.node_count += 1
+                        self.search(current_node_id)
+                    else:
+                        # make a connection and back out
+                        self.graph.add_edge(old_node_id, current_node_id)
+                        self.back()
                 else:
                     print("link failure")
             else:
-                if new:
-                    self.graph.add_edge(current_node_id, self.already_visited[new])
+                self.graph.add_edge(current_node_id, self.already_visited[href])
 
     def display(self):
         nx.draw(self.graph, with_labels=True)
@@ -100,7 +113,7 @@ class Crawler:
 
 def main():
     c = Crawler("Ape", "")
-    c.swing("https://muxite.github.io/", stamina=20)
+    c.swing("https://en.wikipedia.org/wiki/Main_Page", stamina=20)
     c.display()
 
 
