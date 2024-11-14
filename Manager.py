@@ -6,25 +6,33 @@ import matplotlib.pyplot as plt
 import multiprocessing
 from queue import Empty
 
-from tornado.gen import multi
-
 
 class ScraperManager:
     def __init__(self):
         self.link_queue = multiprocessing.Queue()
+        self.lock = multiprocessing.Lock()
+        self.processed_links = {}
         self.scrapers = []
         self.start_event = multiprocessing.Event()
         self.stop_sentinel = None
 
-    def add_links(self, links):
+    def push_links(self, links):
         """
-        Put links into the link queue.
+        Safely update link queue and processed links with a list of links.
 
+        Uses a lock to push only unique links to the link queue,
+        updates processed_links based on recurrences.
         :param links: List of links
-        :return:
         """
-        for link in links:
-            self.link_queue.put(link)
+
+        # Only 1 scraper can access at a time.
+        with self.lock:
+            for link in links:
+                if link not in self.processed_links:
+                    self.link_queue.put(link)
+                    self.processed_links[link] = 1
+                else:
+                    self.processed_links[link] += 1
 
     def scraper(self):
         """
@@ -42,6 +50,9 @@ class ScraperManager:
                 if link == self.stop_sentinel:
                     break
                 # Use the Scraper to get links.
+                found_links = scraper.scrape(link)
+                self.push_links(found_links)
+
             except Empty:
                 # sleep incase new links come in
                 if retries < 1:
@@ -76,6 +87,21 @@ class Scraper:
         self.current_page = None
         self.options = uc.ChromeOptions()
         self.browser = uc.Chrome(options=self.options)
+        self.actions = ActionChains(self.browser)
 
     def scrape(self, link):
-        pass
+        """
+        Get all links on a page of a given link.
+        :param link: The link to navigate to.
+        :return: A list of found links.
+        """
+        self.browser.get(link)
+        # wait
+
+        # get links
+        a_tags = self.browser.find_elements_by_tag_name('a')
+        found_links = [a_tags.get_attribute('href')]
+
+        # gather info about the page
+
+        return found_links
