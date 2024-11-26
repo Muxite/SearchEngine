@@ -1,31 +1,44 @@
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
-from selenium.webdriver import ActionChains
 import time
-import matplotlib.pyplot as plt
-import multiprocessing
-from queue import Empty
+import threading
+from queue import Queue, Empty
+import os
+
+
+def to_decimals(val, decimals):
+    """
+    Round to a number of decimal places.
+    :param val: Initial value.
+    :param decimals: Number of decimals to round to.
+    :return: Rounded result.
+    """
+    return round(val * 10**decimals)/10**decimals
 
 
 class ScraperManager:
     def __init__(self):
-        self.link_queue = multiprocessing.Queue()
-        self.lock = multiprocessing.Lock()
+        self.link_queue = Queue()
+        self.lock = threading.Lock()
         self.processed_links = {}
+        self.opened_links = []
         self.scrapers = []
-        self.start_event = multiprocessing.Event()
-        self.stop_sentinel = None
+        self.start_flag = threading.Event()
+        self.shutdown_flag = threading.Event()
+        self.stop_sentinel = "stop"
+        self.limiter = 1000
+        self.initial_time = 0
+        self.final_time = 1
+
 
     def push_links(self, links):
         """
-        Safely update link queue and processed links with a list of links.
+        Safely update link queue and processed links with a list of links. Shut down if limiter exceeded.
 
         Uses a lock to push only unique links to the link queue,
         updates processed_links based on recurrences.
         :param links: List of links
         """
-
-        # Only 1 scraper can access at a time.
         with self.lock:
             for link in links:
                 if link not in self.processed_links:
@@ -34,39 +47,72 @@ class ScraperManager:
                 else:
                     self.processed_links[link] += 1
 
+                if self.link_queue.qsize() > self.limiter:
+                    print("SHUTTING DOWN")
+                    self.shutdown_flag.set()
+
+
     def scraper(self):
         """
-        A scraper agent process.
+        A scraper agent thread.
 
         Opens a link in the queue, and adds found links to the queue.
         """
-        self.start_event.wait()
-        scraper = Scraper()
+        self.start_flag.wait()
+
+        # Create browser object with minimal processing settings
+        options = uc.ChromeOptions()
+        options.headless = True
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-images")
+        options.add_argument("--disable-javascript")
+        options.add_argument("--window-size=800,600")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+
+        browser = uc.Chrome(
+            options=options,
+            no_sandbox=False,
+            user_multi_procs=True,
+            use_subprocess=False
+        )
+
         retries = 0
-        # check if there is a link to work on
         while True:
+            self.rates()
             try:
                 link = self.link_queue.get(timeout=1)
                 if link == self.stop_sentinel:
                     break
-                # Use the Scraper to get links.
-                found_links = scraper.scrape(link)
-                self.push_links(found_links)
+                browser.get(link)
+                self.opened_links.append(link)
+                time.sleep(0.5)
 
+                # Add more links if shutdown is not imminent.
+                if not self.shutdown_flag.is_set():
+                    a_tags = browser.find_elements(By.TAG_NAME, 'a')
+                    found_links = [a.get_attribute('href') for a in a_tags]
+                    self.push_links(found_links)
             except Empty:
-                # sleep incase new links come in
                 if retries < 1:
-                    time.sleep(30)
+                    time.sleep(2)
                 else:
                     break
+        print("quitting")
+        browser.quit()
 
-    def start_scraper(self):
+    def start_scrapers(self, num_scrapers):
         """
-        Create a new scraper process and agent.
+        Initializes a number of scrapers.
+        :param num_scrapers: The number of browsers to create.
         """
-        p  = multiprocessing.Process(target=self.scraper)
-        self.scrapers.append(p)
-        p.start()
+        for _ in range(num_scrapers):
+            t = threading.Thread(target=self.scraper)
+            self.scrapers.append(t)
+            t.start()
+        self.start_flag.set()  # Set the event to start all scrapers
+        self.initial_time = time.time()
 
     def shutdown(self):
         """
@@ -74,34 +120,31 @@ class ScraperManager:
 
         All links appended after this method will not be processed in this run.
         """
+
         # Give each scraper a stop message
         for i in self.scrapers:
             self.link_queue.put(self.stop_sentinel)
 
-        # Wait for each process to finish
+        # Wait for each thread to finish
         for scraper in self.scrapers:
             scraper.join()
 
-class Scraper:
-    def __init__(self):
-        self.current_page = None
-        self.options = uc.ChromeOptions()
-        self.browser = uc.Chrome(options=self.options)
-        self.actions = ActionChains(self.browser)
+    def rates(self):
+        elapsed_time = time.time() - self.initial_time
 
-    def scrape(self, link):
-        """
-        Get all links on a page of a given link.
-        :param link: The link to navigate to.
-        :return: A list of found links.
-        """
-        self.browser.get(link)
-        # wait
+        link_gather_rate = to_decimals(len(self.processed_links) / elapsed_time, 2)
+        link_view_rate = to_decimals(len(self.opened_links) / elapsed_time, 2)
+        print(f"Gathering {link_gather_rate}Hz, Viewing {link_view_rate}Hz.")
 
-        # get links
-        a_tags = self.browser.find_elements_by_tag_name('a')
-        found_links = [a_tags.get_attribute('href')]
+def main():
+    s = ScraperManager()
+    starting_link = "https://en.wikipedia.org/wiki/Main_Page"
+    s.limiter = 1000
+    s.push_links([starting_link])
+    s.start_scrapers(6)
+    s.shutdown_flag.wait()
+    s.shutdown()
+    print(f"Viewed {len(s.opened_links)} links")
 
-        # gather info about the page
-
-        return found_links
+if __name__ == "__main__":
+    main()
