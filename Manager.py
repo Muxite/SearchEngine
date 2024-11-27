@@ -1,7 +1,10 @@
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import time
 import threading
+import Indexer
 from queue import Queue, Empty
 import os
 
@@ -47,7 +50,7 @@ class ScraperManager:
                 else:
                     self.processed_links[link] += 1
 
-                if self.link_queue.qsize() > self.limiter:
+                if not self.shutdown_flag.is_set() and self.link_queue.qsize() > self.limiter:
                     print("SHUTTING DOWN")
                     self.shutdown_flag.set()
 
@@ -87,7 +90,7 @@ class ScraperManager:
                     break
                 browser.get(link)
                 self.opened_links.append(link)
-                time.sleep(0.5)
+                WebDriverWait(browser, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
 
                 # Add more links if shutdown is not imminent.
                 if not self.shutdown_flag.is_set():
@@ -134,14 +137,17 @@ class ScraperManager:
 
         link_gather_rate = to_decimals(len(self.processed_links) / elapsed_time, 2)
         link_view_rate = to_decimals(len(self.opened_links) / elapsed_time, 2)
-        print(f"Gathering {link_gather_rate}Hz, Viewing {link_view_rate}Hz.")
+        if self.shutdown_flag.is_set():
+            print(f"Viewing {link_view_rate} links/s.")
+        else:
+            print(f"Gathering {link_gather_rate} links/s, Viewing {link_view_rate} links/s.")
 
 def main():
     s = ScraperManager()
     starting_link = "https://en.wikipedia.org/wiki/Main_Page"
-    s.limiter = 1000
+    s.limiter = 1024
     s.push_links([starting_link])
-    s.start_scrapers(6)
+    s.start_scrapers(8)
     s.shutdown_flag.wait()
     s.shutdown()
     print(f"Viewed {len(s.opened_links)} links")
