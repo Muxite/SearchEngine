@@ -4,9 +4,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
 import threading
-import Indexer
+from Indexer import Indexer
 from queue import Queue, Empty
-import os
+from bs4 import BeautifulSoup
 
 
 def to_decimals(val, decimals):
@@ -26,6 +26,8 @@ class ScraperManager:
         self.processed_links = {}
         self.opened_links = []
         self.scrapers = []
+        self.tags = []
+        self.indexer = Indexer()
         self.start_flag = threading.Event()
         self.shutdown_flag = threading.Event()
         self.stop_sentinel = "stop"
@@ -34,15 +36,17 @@ class ScraperManager:
         self.final_time = 1
 
 
-    def push_links(self, links):
+    def push_data(self, links, text):
         """
-        Safely update link queue and processed links with a list of links. Shut down if limiter exceeded.
+        Safely update link queue, processed links, and tags.
 
         Uses a lock to push only unique links to the link queue,
         updates processed_links based on recurrences.
         :param links: List of links
+        :param text: The page's text
         """
         with self.lock:
+            # Update link lists
             for link in links:
                 if link not in self.processed_links:
                     self.link_queue.put(link)
@@ -53,6 +57,11 @@ class ScraperManager:
                 if not self.shutdown_flag.is_set() and self.link_queue.qsize() > self.limiter:
                     print("SHUTTING DOWN")
                     self.shutdown_flag.set()
+
+            # Update tags
+            if text:
+                tags = self.indexer.tag(text)
+                self.tags.append(tags)
 
 
     def scraper(self):
@@ -91,12 +100,16 @@ class ScraperManager:
                 browser.get(link)
                 self.opened_links.append(link)
                 WebDriverWait(browser, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+                text = BeautifulSoup(browser.page_source, 'html.parser').get_text(separator=" ", strip=True)
 
                 # Add more links if shutdown is not imminent.
+                found_links = []
                 if not self.shutdown_flag.is_set():
                     a_tags = browser.find_elements(By.TAG_NAME, 'a')
                     found_links = [a.get_attribute('href') for a in a_tags]
-                    self.push_links(found_links)
+
+                # Safely push all data using a lock.
+                self.push_data(found_links, text)
             except Empty:
                 if retries < 1:
                     time.sleep(2)
@@ -123,7 +136,6 @@ class ScraperManager:
 
         All links appended after this method will not be processed in this run.
         """
-
         # Give each scraper a stop message
         for i in self.scrapers:
             self.link_queue.put(self.stop_sentinel)
@@ -145,12 +157,13 @@ class ScraperManager:
 def main():
     s = ScraperManager()
     starting_link = "https://en.wikipedia.org/wiki/Main_Page"
-    s.limiter = 1024
-    s.push_links([starting_link])
+    s.limiter = 256
+    s.push_data([starting_link], None)
     s.start_scrapers(8)
     s.shutdown_flag.wait()
     s.shutdown()
     print(f"Viewed {len(s.opened_links)} links")
+    print(s.tags)
 
 if __name__ == "__main__":
     main()
