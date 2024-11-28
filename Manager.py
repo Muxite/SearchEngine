@@ -7,6 +7,8 @@ import threading
 from Indexer import Indexer
 from queue import Queue, Empty
 from bs4 import BeautifulSoup
+import pickle
+from TagIndex import TagIndex
 
 
 def to_decimals(val, decimals):
@@ -20,59 +22,104 @@ def to_decimals(val, decimals):
 
 
 class ScraperManager:
-    def __init__(self):
+    def __init__(self, state_path, tag_index_path):
         self.link_queue = Queue()
+        self.tag_index = TagIndex()
+        self.tag_index_path = tag_index_path
+        self.indexer = Indexer()
+        self.state_path = state_path
         self.lock = threading.Lock()
         self.processed_links = {}
-        self.opened_links = []
         self.scrapers = []
-        self.tags = []
-        self.indexer = Indexer()
         self.start_flag = threading.Event()
         self.shutdown_flag = threading.Event()
         self.stop_sentinel = "stop"
-        self.limiter = 1000
         self.initial_time = 0
         self.final_time = 1
+        self.opened_links = 0
 
+    def save_tag_index(self):
+        """
+        Save the TagIndex to file.
+        """
+        self.tag_index.save_index(self.tag_index_path)
+        print(f"*** Saved tag index to {self.tag_index_path}***")
 
-    def push_data(self, links, text):
+    def load_tag_index(self):
+        """
+        Load the TagIndex from file.
+        """
+        self.tag_index.load_index(self.tag_index_path)
+        print(f"*** Loaded tag index from {self.tag_index_path}***")
+
+    def save_state(self):
+        """
+        Save the current state of the scraper to a file.
+        :param path: save location
+        """
+        path = self.state_path
+        state = {
+            'link_queue' : list(self.link_queue.queue),
+            'processed_links' : self.processed_links,
+            'indexer' : self.indexer.serialize()
+        }
+
+        with open(path, 'wb') as file:
+            pickle.dump(state, file)
+        print(f"*** Saved state to {path}***")
+
+    def load_state(self):
+        """
+        Load a saved scraper state from a file.
+        :param path: load location
+        """
+        path = self.state_path
+        try:
+            with open(path, 'rb') as file:
+                state = pickle.load(file)
+
+            # Restore the state variables
+
+            self.link_queue = Queue()
+            for link in state['link_queue']:
+                self.link_queue.put(link)
+
+            self.processed_links = state['processed_links']  # Restore the processed links
+            self.indexer.deserialize(state['indexer'])  # Restore the Indexer object
+            print(f"*** State loaded from {path}***")
+
+        except FileNotFoundError:
+            print(f"No saved state file found at {path}")
+
+    def push_data(self, current_link, found_links, text):
         """
         Safely update link queue, processed links, and tags.
 
         Uses a lock to push only unique links to the link queue,
         updates processed_links based on recurrences.
-        :param links: List of links
+        :param current_link: The link the browser is on
+        :param found_links: List of links
         :param text: The page's text
         """
         with self.lock:
             # Update link lists
-            for link in links:
+            self.opened_links += 1
+            for link in found_links:
                 if link not in self.processed_links:
                     self.link_queue.put(link)
                     self.processed_links[link] = 1
                 else:
                     self.processed_links[link] += 1
 
-                if not self.shutdown_flag.is_set() and self.link_queue.qsize() > self.limiter:
-                    print("SHUTTING DOWN")
-                    self.shutdown_flag.set()
-
             # Update tags
             if text:
                 tags = self.indexer.tag(text)
-                self.tags.append(tags)
+                self.tag_index.add_tagged_link(tags, current_link)
 
-
-    def scraper(self):
+    def setup_browser(self):
         """
-        A scraper agent thread.
-
-        Opens a link in the queue, and adds found links to the queue.
+        Configure the browser for scraping.
         """
-        self.start_flag.wait()
-
-        # Create browser object with minimal processing settings
         options = uc.ChromeOptions()
         options.headless = True
         options.add_argument("--disable-gpu")
@@ -89,7 +136,35 @@ class ScraperManager:
             user_multi_procs=True,
             use_subprocess=False
         )
+        return browser
 
+    def extract_links(self, browser):
+        """Extract links from the page using BeautifulSoup and Selenium."""
+        a_tags = browser.find_elements(By.TAG_NAME, 'a')
+        return [a.get_attribute('href') for a in a_tags]
+
+    def extract_text(self, browser):
+        """Extract text from the page source using BeautifulSoup."""
+        return BeautifulSoup(browser.page_source, 'html.parser').get_text(separator=" ", strip=True)
+
+    def process_page(self, link, browser):
+        """Open the page, extract text and links, and push data."""
+        browser.get(link)
+        WebDriverWait(browser, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        text = self.extract_text(browser)
+        found_links = self.extract_links(browser)
+        self.push_data(link, found_links, text)
+
+    def scraper(self):
+        """
+        A scraper agent thread.
+
+        Opens a link in queue, process page for data and more links.
+        """
+        self.start_flag.wait()
+        browser = self.setup_browser()
+
+        # Maintain loop until shutdown.
         retries = 0
         while True:
             self.rates()
@@ -97,19 +172,8 @@ class ScraperManager:
                 link = self.link_queue.get(timeout=1)
                 if link == self.stop_sentinel:
                     break
-                browser.get(link)
-                self.opened_links.append(link)
-                WebDriverWait(browser, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-                text = BeautifulSoup(browser.page_source, 'html.parser').get_text(separator=" ", strip=True)
+                self.process_page(link, browser)
 
-                # Add more links if shutdown is not imminent.
-                found_links = []
-                if not self.shutdown_flag.is_set():
-                    a_tags = browser.find_elements(By.TAG_NAME, 'a')
-                    found_links = [a.get_attribute('href') for a in a_tags]
-
-                # Safely push all data using a lock.
-                self.push_data(found_links, text)
             except Empty:
                 if retries < 1:
                     time.sleep(2)
@@ -133,8 +197,6 @@ class ScraperManager:
     def shutdown(self):
         """
         Gracefully shutdown the system.
-
-        All links appended after this method will not be processed in this run.
         """
         # Give each scraper a stop message
         for i in self.scrapers:
@@ -144,26 +206,68 @@ class ScraperManager:
         for scraper in self.scrapers:
             scraper.join()
 
+        self.save_tag_index()
+
+    def force_shutdown(self, save=False):
+        """
+        Immediately stop all threads and save the state.
+        Ensures no further links are processed after being called.
+        """
+
+        # Save the state and tag index
+        if save:
+            self.save_state()
+            self.save_tag_index()
+
+        # Set the shutdown flag
+        self.shutdown_flag.set()
+
+        # Lock to safely clear and refill the queue
+        with self.lock:
+            # Clear the queue to discard any remaining links
+            while not self.link_queue.empty():
+                self.link_queue.get()
+
+            # Send stop sentinels to halt threads
+            for _ in self.scrapers:
+                self.link_queue.put(self.stop_sentinel)
+
+        # Wait for all threads to finish
+        for scraper in self.scrapers:
+            scraper.join()
+
+        print("*** Forced Shutdown Complete***")
+
     def rates(self):
+        """
+        Print diagnostic info on the current performance of the scrapers.
+        """
         elapsed_time = time.time() - self.initial_time
 
         link_gather_rate = to_decimals(len(self.processed_links) / elapsed_time, 2)
-        link_view_rate = to_decimals(len(self.opened_links) / elapsed_time, 2)
+        link_view_rate = to_decimals(self.opened_links / elapsed_time, 2)
         if self.shutdown_flag.is_set():
             print(f"Viewing {link_view_rate} links/s.")
         else:
             print(f"Gathering {link_gather_rate} links/s, Viewing {link_view_rate} links/s.")
 
 def main():
-    s = ScraperManager()
-    starting_link = "https://en.wikipedia.org/wiki/Main_Page"
-    s.limiter = 256
-    s.push_data([starting_link], None)
-    s.start_scrapers(8)
+    # Initialize ScraperManager
+    s = ScraperManager(r"state.pickle", r"tagIndex.pickle")
+
+    # Load previous state and tag index
+    s.load_state()
+    s.load_tag_index()
+    num_scrapers = 8
+    # s.push_data(None, ["https://en.wikipedia.org/wiki/Main_Page"], None)
+    s.start_scrapers(num_scrapers)
+    shutdown_timer = threading.Timer(60, s.force_shutdown)
+    shutdown_timer.start()
     s.shutdown_flag.wait()
-    s.shutdown()
-    print(f"Viewed {len(s.opened_links)} links")
-    print(s.tags)
+    s.force_shutdown(save=True)
+    s.save_state()
+    s.save_tag_index()
+    print(s.tag_index.summary())
 
 if __name__ == "__main__":
     main()

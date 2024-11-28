@@ -14,7 +14,6 @@ from wheel.cli import tags_f
 
 class Indexer:
     def __init__(self):
-        self.method = "TF-IDF"
         self.total_counts = {}
         self.document_count = 0
         self.lock = threading.Lock()
@@ -84,3 +83,20 @@ class Indexer:
         scores = self.tfidf_score(text)
         top_n = sorted(scores.items(), key = lambda item: item[1], reverse=True)[:count]
         return [word for word, _ in top_n]
+
+    def serialize(self):
+        """
+        Converts Indexer state into a serializable dictionary.
+        """
+        return {
+            'total_counts': self.total_counts,
+            'document_count': self.document_count
+        }
+
+    def deserialize(self, state):
+        """
+        Restores Indexer state from a dictionary.
+        :param state: dictionary with total_counts and document_count
+        """
+        self.total_counts = state.get('total_counts', {})
+        self.document_count = state.get('document_count', 0)
