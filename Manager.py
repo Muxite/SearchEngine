@@ -256,12 +256,10 @@ def main():
     s = ScraperManager(r"state.pickle", r"tagIndex.pickle")
 
     # Load previous state and tag index
-    s.load_state()
-    s.load_tag_index()
     num_scrapers = 8
-    # s.push_data(None, ["https://en.wikipedia.org/wiki/Main_Page"], None)
+    s.push_data(None, ["https://en.wikipedia.org/wiki/Main_Page"], None)
     s.start_scrapers(num_scrapers)
-    shutdown_timer = threading.Timer(60, s.force_shutdown)
+    shutdown_timer = threading.Timer(300, s.force_shutdown)
     shutdown_timer.start()
     s.shutdown_flag.wait()
     s.force_shutdown(save=True)
