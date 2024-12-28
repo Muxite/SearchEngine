@@ -4,11 +4,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
 import threading
-from Indexer import Indexer
 from queue import Queue, Empty
 from bs4 import BeautifulSoup
 import pickle
-from TagIndex import TagIndex
+from old.TagIndex import TagIndex
 
 
 def to_decimals(val, decimals):
@@ -22,14 +21,14 @@ def to_decimals(val, decimals):
 
 
 class ScraperManager:
-    def __init__(self, state_path, tag_index_path):
+    def __init__(self, num_workers, state_path, tag_index_path):
+        self.num_workers = num_workers
         self.link_queue = Queue()
+        self.data_queue = Queue()
         self.tag_index = TagIndex()
         self.tag_index_path = tag_index_path
-        self.indexer = Indexer()
         self.state_path = state_path
         self.lock = threading.Lock()
-        self.processed_links = {}
         self.scrapers = []
         self.start_flag = threading.Event()
         self.shutdown_flag = threading.Event()
@@ -93,28 +92,19 @@ class ScraperManager:
 
     def push_data(self, current_link, found_links, text):
         """
-        Safely update link queue, processed links, and tags.
+        Safely update link queue, processed links, and text.
 
         Uses a lock to push only unique links to the link queue,
         updates processed_links based on recurrences.
-        :param current_link: The link the browser is on
-        :param found_links: List of links
+        :param current_link: The link of the page the browser is on.
+        :param found_links: List of links found on the page.
         :param text: The page's text
         """
         with self.lock:
             # Update link lists
             self.opened_links += 1
-            for link in found_links:
-                if link not in self.processed_links:
-                    self.link_queue.put(link)
-                    self.processed_links[link] = 1
-                else:
-                    self.processed_links[link] += 1
-
-            # Update tags
-            if text:
-                tags = self.indexer.tag(text)
-                self.tag_index.add_tagged_link(tags, current_link)
+            self.data_queue.put((current_link, text))
+            self.link_queue.put(found_links)
 
     def setup_browser(self):
         """
@@ -138,21 +128,13 @@ class ScraperManager:
         )
         return browser
 
-    def extract_links(self, browser):
-        """Extract links from the page using BeautifulSoup and Selenium."""
-        a_tags = browser.find_elements(By.TAG_NAME, 'a')
-        return [a.get_attribute('href') for a in a_tags]
-
-    def extract_text(self, browser):
-        """Extract text from the page source using BeautifulSoup."""
-        return BeautifulSoup(browser.page_source, 'html.parser').get_text(separator=" ", strip=True)
-
     def process_page(self, link, browser):
         """Open the page, extract text and links, and push data."""
         browser.get(link)
         WebDriverWait(browser, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
-        text = self.extract_text(browser)
-        found_links = self.extract_links(browser)
+        text = BeautifulSoup(browser.page_source, 'html.parser').get_text(separator=" ", strip=True)
+        a_tags = browser.find_elements(By.TAG_NAME, 'a')
+        found_links = [a.get_attribute('href') for a in a_tags]
         self.push_data(link, found_links, text)
 
     def scraper(self):
@@ -187,7 +169,7 @@ class ScraperManager:
         Initializes a number of scrapers.
         :param num_scrapers: The number of browsers to create.
         """
-        for _ in range(num_scrapers):
+        for _ in range(self.num_scrapers):
             t = threading.Thread(target=self.scraper)
             self.scrapers.append(t)
             t.start()
@@ -256,10 +238,9 @@ def main():
     s = ScraperManager(r"state.pickle", r"tagIndex.pickle")
 
     # Load previous state and tag index
-    num_scrapers = 8
     s.push_data(None, ["https://en.wikipedia.org/wiki/Main_Page"], None)
-    s.start_scrapers(num_scrapers)
-    shutdown_timer = threading.Timer(300, s.force_shutdown)
+    s.start_scrapers()
+    shutdown_timer = threading.Timer(60, s.force_shutdown)
     shutdown_timer.start()
     s.shutdown_flag.wait()
     s.force_shutdown(save=True)

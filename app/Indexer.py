@@ -70,7 +70,7 @@ class Indexer:
         """
         words_list[:] = [word for word in words_list if word not in to_remove]
 
-    def tag(self, text, count=4):
+    def tag(self, text, count=3):
         """
         Returns ideal tags for indexing a given text.
         :param text: Text to index
