@@ -1,0 +1,15 @@
+General Notes About the Project.
+
+2024-12-29
+ScraperManager will handle Scraper threads, ValidatorManager will handle Validator threads.
+Proper shutdown of the data gathering system will be a "flush":
+1. ScraperManager: Scraper operating flag will be set to False. Scraper: stops link gathering.
+2. ScraperManager: Scraper standby flag will be set to False. Scraper: closes browsers.
+3. ScraperManager: Scraper quit flag set to True. Scraper: All exit run_loop.
+4. ValidatorManager: Starts a Validator of batch_size 1 on top of existing Validators.
+5. ValidatorManager: Validator operating flag set True.
+6. Validators clear validation queue, all results pushed to link queue.
+7. ValidatorManager: Validator quit flag set to True. Validator: All exit run_loop.
+8. ValidatorManager: Save seen_links_set
+9. ScraperManager: Save link queue.
+
