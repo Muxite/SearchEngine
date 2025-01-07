@@ -1,15 +1,15 @@
 from Scraper import Scraper
 import threading
+from namegen import namegen
 from queue import Queue
 
 
 class ScraperManager:
-    def __init__(self, seed, threads, link_queue, texts_queue, validate_queue, timeout, scraper_timeout=2):
+    def __init__(self, seed, link_queue, texts_queue, validate_queue, timeout, scraper_timeout=2):
         """
         Initialize the ScraperManager that handles gathering links and text.
     
         :param seed: The starting link to scrape, which will be added to the link queue.
-        :param threads: Number of threads to run for managing the scrapers.
         :param link_queue: Queue of links from the validator.
         :param texts_queue: Output queue of text that feeds the indexer.
         :param validate_queue: Output queue of links that feeds back to the validator.
@@ -64,3 +64,19 @@ class ScraperManager:
                     "quit": False
                 }
 
+    def update_num(self, count):
+        """
+        Obtain the desired number of scrapers by starting new ones or quitting existing ones.
+
+        :param count: The desired number of scrapers
+        """
+        current_count = len(self.scrapers)
+
+        if count < current_count:
+            for _ in range(current_count - count):
+                self.start_scraper(namegen())
+        elif count > current_count:
+            for _ in range(count - current_count):
+                with self.lock:
+                    name = list(self.flags.keys())[0]
+                    self.flags[name]["quit"] = True

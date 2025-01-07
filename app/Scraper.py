@@ -9,6 +9,7 @@ from queue import Empty
 class Scraper:
     def __init__(self, name, lock, flags, in_queue, texts_queue, validate_queue, timeout=2):
         """
+        Create Scraper instance that has 1 thread.
 
         :param name: Name, also the key in flags.
         :param lock: Lock for checking flags.
@@ -111,7 +112,7 @@ class Scraper:
             if quitting:
                 # close browser, close thread
                 self._shutdown()
-                self._exit()
+                self.report("Exiting")
                 break
 
             if flags_ready and not self.ready:
@@ -144,14 +145,4 @@ class Scraper:
             self.browser = None
             self.operating = False
             self.ready = False
-        self.report("Shutting down.")
-
-    def _exit(self):
-        """
-        Close the thread.
-        :return:
-        """
-        if self.thread is not None:
-            self.thread.join()
-            self.thread = None
-        self.report("Exiting.")
+        self.report("Shutting down")

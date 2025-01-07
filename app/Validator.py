@@ -14,14 +14,15 @@ class Validator:
         self.timeout = timeout
         self.batch_size = batch_size
         self.thread = None
+        self.ready = False
         self.operating = False
-
 
     def report(self, text):
         """
-        Logs a message with the validator's name for identification purposes.
+        Logs a message with the scraper's name for identification purposes.
 
         :param text: The message to be logged or reported.
+        :return: None
         """
         print(f"Validator {self.name}: {text}")
 
@@ -32,10 +33,15 @@ class Validator:
         :param check_period: How many loops until check for operating signal.
         """
         loops = 0
-        while not self.operating:
+        while True:
             if loops % check_period == 0:
                 with self.toggle_lock:
                     self.operating = self.flags[self.name]["operating"]
+                    quitting = self.flags[self.name]["quit"]
+
+            if quitting:
+                self.report("Exiting")
+                break
 
             if self.operating:
                 try:
@@ -48,5 +54,16 @@ class Validator:
                                 self.out_queue.put(item)
                 except Empty:
                     time.sleep(self.timeout)
+            else:
+                time.sleep(self.timeout)
 
             loops += 1
+
+    def start(self):
+        """
+        Start thread if not already started.
+        """
+        if self.thread is None:
+            self.ready = True
+            self.thread = threading.Thread(target=self.run_loop)
+            self.thread.start()
