@@ -21,7 +21,7 @@ class ValidatorManager:
         self.validator_timeout = validator_timeout
         self.timeout = timeout
 
-    def start_validator(self, name):
+    def start_validator(self, name, batch_size=100):
         """
         Start a validator instance. It will listen to its flags.
 
@@ -36,12 +36,13 @@ class ValidatorManager:
                     self.flags,
                     self.link_queue,
                     self.validate_queue,
-                    self.validator_timeout
+                    self.validator_timeout,
+                    batch_size
                 )
                 self.validators[name].start()
                 self.flags[name] = {
                     "operating": False,
-                    "standby": True,
+                    "standby": False,
                     "quit": False
                 }
 

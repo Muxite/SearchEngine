@@ -5,15 +5,13 @@ from queue import Queue
 
 
 class ScraperManager:
-    def __init__(self, seed, link_queue, texts_queue, validate_queue, timeout, scraper_timeout=2):
+    def __init__(self, link_queue, texts_queue, validate_queue, scraper_timeout=2):
         """
         Initialize the ScraperManager that handles gathering links and text.
-    
-        :param seed: The starting link to scrape, which will be added to the link queue.
-        :param link_queue: Queue of links from the validator.
+
+        :param link_queue: Queue of links from the validator. Must be seeded with at least 1 valid link.
         :param texts_queue: Output queue of text that feeds the indexer.
         :param validate_queue: Output queue of links that feeds back to the validator.
-        :param timeout: Max time the scraper manager will run.
         :param scraper_timeout: Delay value inside the scrapers.
         """
         self.scrapers = {}
@@ -23,8 +21,6 @@ class ScraperManager:
         self.texts_queue = texts_queue
         self.validate_queue = validate_queue
         self.scraper_timeout = scraper_timeout
-        self.link_queue.put(seed)
-        self.timeout = timeout
 
     def send_order_all(self, flag, value):
         """

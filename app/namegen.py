@@ -1,5 +1,5 @@
-import random
 import time
+import random
 
 def namegen():
-    return time.time_ns()%10000
+    return random.randint(0, 10000)
