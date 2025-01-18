@@ -3,6 +3,7 @@ from ScraperManager import ScraperManager
 from queue import Queue
 import time
 import pickle
+from utils import delayed_action
 
 class DataGatherer:
     def __init__(self,
@@ -13,19 +14,30 @@ class DataGatherer:
                  timeout=120,
                  scrapers=8,
                  validators=1,
-                 quit_timeout=2,
                  scraper_timeout=2,
                  validator_timeout=2
                  ):
         """
-        An object that produces new link+text pairs from a starting seed. Takes time to start and stop.
+        Starts an object that takes a seed link and generates links and text to a queue.
+
+        :param seed: Initial link.
+        :param out_queue: queue to which data is pushed.
+        :param autostart: if the code should run after initialization.
+        :param autostop: if the code should shutdown after timeout.
+        :param timeout: how long the code runs until shutdown.
+        :param scrapers: how many browsers to use.
+        :param validators: how many validators to use.
+        :param scraper_timeout: how frequently the scrapers check for links.
+        :param validator_timeout: how frequently the validators check for links.
         """
+
         self.out_queue = out_queue
         self.autostart = autostart
         self.autostop = autostop
         self.timeout = timeout
         self.running = False
         self.link_queue = Queue()
+        self.link_queue.put(seed)
         self.validation_queue = Queue()
         self.Scraper = ScraperManager(seed,
                                       self.link_queue,
@@ -38,8 +50,6 @@ class DataGatherer:
                                           validator_timeout)
         self.scrapers = scrapers
         self.validators = validators
-        self.quit_timeout = quit_timeout
-
         if self.autostart:
             self.update_threads(self.scrapers, self.validators)
             self.start()
@@ -70,6 +80,9 @@ class DataGatherer:
         self.Scraper.send_order_all("operating", True)
         self.Validator.send_order_all("quit", True)
         self.Validator.send_order_all("operating", True)
+
+        if self.autostop:
+            delayed_action(self.quit, self.timeout)
 
     def quit(self):
         """

@@ -57,11 +57,12 @@ class ValidatorManager:
         if count < current_count:
             for _ in range(current_count - count):
                 self.start_validator(namegen())
-        elif count > current_count:
-            for _ in range(count - current_count):
-                with self.lock:
-                    name = list(self.flags.keys())[0]
-                    self.flags[name]["quit"] = True
+        elif count < current_count:
+            if current_count > 0:
+                for i in range(count - current_count):
+                    with self.lock:
+                        name = list(self.flags.keys())[i]
+                        self.flags[name]["quit"] = True
 
     def send_order_all(self, flag, value):
         """

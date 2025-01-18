@@ -1,8 +1,8 @@
 from collections import Counter
 from math import log
 import threading
-
-from wheel.cli import tags_f
+import time
+from queue import Empty
 
 
 # Convert everything to lowercase.
@@ -13,7 +13,14 @@ from wheel.cli import tags_f
 # At the same time, train Inverse Document Frequency
 
 class Indexer:
-    def __init__(self):
+    def __init__(self, in_queue, out_queue, timeout=2, batch_size=10):
+        """
+        Take an queue of link, text pairs and put them into a link, tag pair into an out queue.
+        :param in_queue: Queue of link text pairs.
+        :param out_queue: Queue of link tag pairs.
+        """
+        self.in_queue = in_queue
+        self.out_queue = out_queue
         self.total_counts = {}
         self.document_count = 0
         self.lock = threading.Lock()
@@ -34,6 +41,9 @@ class Indexer:
             "'", '"', '“', '”', '‘', '’', '<', '>', '©', '®', '™', '$', '#', '@', '&', '^', '~', '|', '\\',
             '€', '£', '¥', '•', '¶', '…', '—', '›', '‹', '•', '...', '–'
         ]
+        self.active = True
+        self.timeout = timeout
+        self.batch_size = batch_size
 
     def tfidf_score(self, text, is_document=True):
         """
@@ -84,19 +94,19 @@ class Indexer:
         top_n = sorted(scores.items(), key = lambda item: item[1], reverse=True)[:count]
         return [word for word, _ in top_n]
 
-    def serialize(self):
+    def loop(self):
         """
-        Converts Indexer state into a serializable dictionary.
+        Primary loop of Indexer object. Pop link and text into a link and tag queue.
+        :return:
         """
-        return {
-            'total_counts': self.total_counts,
-            'document_count': self.document_count
-        }
-
-    def deserialize(self, state):
-        """
-        Restores Indexer state from a dictionary.
-        :param state: dictionary with total_counts and document_count
-        """
-        self.total_counts = state.get('total_counts', {})
-        self.document_count = state.get('document_count', 0)
+        while self.active:
+            batch = []
+            try:
+                for _ in range(self.batch_size):
+                    batch.append(self.in_queue.get(timeout=self.timeout))
+                if batch:
+                    for link, text in batch:
+                        tags = self.tag(text)
+                        self.out_queue.put((link, tags))
+            except Empty:
+                time.sleep(self.timeout)
