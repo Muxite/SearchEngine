@@ -42,7 +42,6 @@ class ValidatorManager:
                 self.validators[name].start()
                 self.flags[name] = {
                     "operating": False,
-                    "standby": False,
                     "quit": False
                 }
 
@@ -54,7 +53,7 @@ class ValidatorManager:
         """
         current_count = len(self.validators)
 
-        if count < current_count:
+        if count > current_count:
             for _ in range(current_count - count):
                 self.start_validator(namegen())
         elif count < current_count:

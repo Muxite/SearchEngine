@@ -1,2 +1,6 @@
-undetected-chromedriver~=3.5.5
-selenium~=4.24.0
+requests
+selenium
+undetected_chromedriver
+beautifulsoup4
+bs4
+pickle-mixin

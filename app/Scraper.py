@@ -7,7 +7,7 @@ import time
 from queue import Empty
 
 class Scraper:
-    def __init__(self, name, lock, flags, in_queue, texts_queue, validate_queue, timeout=2):
+    def __init__(self, name, lock, flags, in_queue, texts_queue, validate_queue, timeout=1):
         """
         Create Scraper instance that has 1 thread.
 
@@ -26,9 +26,9 @@ class Scraper:
         self.texts_queue = texts_queue
         self.validate_queue = validate_queue
         self.timeout = timeout
-        self.ready = False
         self.operating = False
         self.browser = None
+        self.browser = self._init_browser()
         self.thread = None
 
     def _init_browser(self):
@@ -38,8 +38,8 @@ class Scraper:
         return: configured browser
         """
 
-        if self.ready:
-            self.report("Already Ready")
+        if self.browser:
+            self.report("Browser already started")
             return self.browser
 
         options = uc.ChromeOptions()
@@ -57,14 +57,13 @@ class Scraper:
             user_multi_procs=True,
             use_subprocess=False
         )
-        self.ready = True
+        self.report("Browser Ready")
         return browser
 
     def start(self):
-        if not self.ready:
-            self.ready = True
-            self.thread = threading.Thread(target=self.run_loop)
-            self.thread.start()
+        self.thread = threading.Thread(target=self.run_loop)
+        self.thread.start()
+        self.report("Started")
 
     def get_page(self, url):
         """
@@ -79,6 +78,7 @@ class Scraper:
         text = self.browser.find_element(By.TAG_NAME, "body").text
         a_tags = self.browser.find_elements(By.TAG_NAME, 'a')
         found_links = [a.get_attribute('href') for a in a_tags]
+        self.report(f"Got page {url}")
         return text, found_links
 
     def report(self, text):
@@ -97,31 +97,24 @@ class Scraper:
         :return: None
         """
 
-        if not self.ready:
-            self.report("Not ready")
-            return None
 
         loops = 0
         while True:
             # periodically check for start/shutdown signal
             with self.toggle_lock:
                 self.operating = self.flags[self.name]["operating"]
-                flags_ready = self.flags[self.name]["ready"]
                 quitting = self.flags[self.name]["quit"]
-
             if quitting:
                 # close browser, close thread
                 self._shutdown()
                 self.report("Exiting")
                 break
 
-            if flags_ready and not self.ready:
-                self._init_browser()
-            elif not flags_ready and self.ready:
-                self._shutdown()
+            if self.browser is None:
+                self.browser = self._init_browser()
 
             # regular operation
-            if self.ready and self.operating:
+            if self.operating:
                 try:
                     link = self.in_queue.get(timeout=self.timeout)
                     text, found_links = self.get_page(link)
@@ -144,5 +137,4 @@ class Scraper:
             self.browser.quit()
             self.browser = None
             self.operating = False
-            self.ready = False
         self.report("Shutting down")

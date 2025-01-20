@@ -1,4 +1,5 @@
 from DataGatherer import DataGatherer
+from Scraper import Scraper
 from queue import Queue
 from namegen import namegen
 import random

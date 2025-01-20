@@ -26,7 +26,7 @@ class Validator:
         """
         print(f"Validator {self.name}: {text}")
 
-    def run_loop(self, check_period):
+    def run_loop(self):
         """
         Primary loop of validator operation. Gets batches from in queue, validates batch, pushes valid to out queue.
 
@@ -34,10 +34,9 @@ class Validator:
         """
         loops = 0
         while True:
-            if loops % check_period == 0:
-                with self.toggle_lock:
-                    self.operating = self.flags[self.name]["operating"]
-                    quitting = self.flags[self.name]["quit"]
+            with self.toggle_lock:
+                self.operating = self.flags[self.name]["operating"]
+                quitting = self.flags[self.name]["quit"]
 
             if quitting:
                 self.report("Exiting")
