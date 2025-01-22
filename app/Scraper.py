@@ -1,4 +1,5 @@
-import undetected_chromedriver as uc
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.common.by import By
@@ -42,7 +43,7 @@ class Scraper:
             self.report("Browser already started")
             return self.browser
 
-        options = uc.ChromeOptions()
+        options = webdriver.ChromeOptions()
         options.headless = True
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-extensions")
@@ -51,12 +52,7 @@ class Scraper:
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
 
-        browser = uc.Chrome(
-            options=options,
-            no_sandbox=False,
-            user_multi_procs=True,
-            use_subprocess=False
-        )
+        browser = webdriver.Chrome(service=Service('/usr/bin/chromedriver'), options=options)
         self.report("Browser Ready")
         return browser
 
