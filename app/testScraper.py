@@ -6,6 +6,7 @@ from utils import delayed_action
 
 def test_Scraper():
     # creating queues for text and validation
+    print("***START SCRAPER TEST***")
     texts_queue = Queue()
     validate_queue = Queue()
     in_queue = Queue()
@@ -28,6 +29,7 @@ def test_Scraper():
     print(list(texts_queue.queue))
     print(list(validate_queue.queue))
     flags["0000"]["quit"] = True
+    print("***END SCRAPER TEST***")
 
 if __name__ == '__main__':
     test_Scraper()

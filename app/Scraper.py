@@ -3,6 +3,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
 import threading
 import time
 from queue import Empty
@@ -44,7 +45,7 @@ class Scraper:
             return self.browser
 
         options = webdriver.ChromeOptions()
-        options.headless = True
+        options.add_argument("--headless")
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-extensions")
         options.add_argument("--disable-images")
@@ -52,7 +53,7 @@ class Scraper:
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
 
-        browser = webdriver.Chrome(service=Service('/usr/bin/chromedriver'), options=options)
+        browser = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
         self.report("Browser Ready")
         return browser
 

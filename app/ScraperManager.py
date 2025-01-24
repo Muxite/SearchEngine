@@ -15,6 +15,7 @@ class ScraperManager:
         :param scraper_timeout: Delay value inside the scrapers.
         """
         self.scrapers = {}
+        self.scrapers_count = 0
         self.lock = threading.Lock()
         self.flags = {}
         self.link_queue = link_queue
@@ -56,9 +57,9 @@ class ScraperManager:
                 self.scrapers[name].start()
                 self.flags[name] = {
                     "operating": False,
-                    "standby": True,
                     "quit": False
                 }
+        self.scrapers_count += 1
 
     def update_num(self, count):
         """
@@ -66,14 +67,24 @@ class ScraperManager:
 
         :param count: The desired number of scrapers
         """
-        current_count = len(self.scrapers)
 
-        if count > current_count:
-            for _ in range(current_count - count):
+        if count > self.scrapers_count:
+            for _ in range(count - self.scrapers_count):
                 self.start_scraper(namegen())
-        elif count < current_count:
-            if current_count > 0:
-                for i in range(count - current_count):
-                    with self.lock:
-                        name = list(self.flags.keys())[i]
-                        self.flags[name]["quit"] = True
+        elif count < self.scrapers_count:
+            self.end_scrapers(self.scrapers_count - count)
+
+    def end_scraper(self, name):
+        with self.lock:
+            self.flags[name]["quit"] = True
+        self.scrapers_count -= 1
+
+    def end_scrapers(self, count):
+        to_end = max(count, self.scrapers_count)
+        ended = 0
+        for scraper in self.scrapers:
+            if not self.flags[scraper]["quit"]:
+                self.end_scraper(scraper)
+                ended += 1
+                if ended == to_end:
+                    break
