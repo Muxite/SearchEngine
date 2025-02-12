@@ -15,6 +15,7 @@ def delayed_action(timeout, action):
 
     threading.Thread(target=d_a, daemon=True).start()
 
+
 def queue_checker(queue, frequency, action):
     def worker():
         while not queue.empty():
@@ -23,3 +24,12 @@ def queue_checker(queue, frequency, action):
             time.sleep(1/frequency)
 
     threading.Thread(target=worker, daemon=True).start()
+
+def push_list(queue, items_list):
+    """
+    Push a list of items to a queue.
+    :param queue: destination
+    :param items_list: list
+    """
+    for item in items_list:
+        queue.put(item)

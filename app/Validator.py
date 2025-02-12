@@ -49,7 +49,7 @@ class Validator:
                         batch.append(self.in_queue.get(timeout=self.timeout))
                     if batch:
                         for item in batch:
-                            if item in self.seen_links_set:
+                            if not item in self.seen_links_set:
                                 self.out_queue.put(item)
                 except Empty:
                     time.sleep(self.timeout)

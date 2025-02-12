@@ -4,27 +4,29 @@ from namegen import namegen
 
 
 class ValidatorManager:
-    def __init__(self, link_queue, validate_queue, timeout, validator_timeout=2):
+    def __init__(self, in_queue, out_queue, timeout, validator_timeout=2):
         """
         Initialize the ValidatorManager that handles link validation.
 
-        :param link_queue: Queue of links from the scraper.
-        :param validate_queue: Output queue of validated links that feeds back to the scraper.
+        :param in_queue: Queue of links from the scraper.
+        :param out_queue: Output queue of validated links that feeds back to the scraper.
         :param timeout: Max time the validator manager will run.
         :param validator_timeout: Timeout for validator operations.
         """
         self.validators = {}
+        self.validators_count = 0
         self.lock = threading.Lock()
         self.flags = {}
-        self.link_queue = link_queue
-        self.validate_queue = validate_queue
+        self.in_queue = in_queue
+        self.out_queue = out_queue
         self.validator_timeout = validator_timeout
         self.timeout = timeout
 
-    def start_validator(self, name, batch_size=100):
+    def start_validator(self, name, batch_size=1):
         """
         Start a validator instance. It will listen to its flags.
 
+        :param batch_size:
         :param name: Name of the validator.
         """
 
@@ -34,8 +36,8 @@ class ValidatorManager:
                     name,
                     self.lock,
                     self.flags,
-                    self.link_queue,
-                    self.validate_queue,
+                    self.in_queue,
+                    self.out_queue,
                     self.validator_timeout,
                     batch_size
                 )
@@ -51,17 +53,12 @@ class ValidatorManager:
 
         :param count: The desired number of validators
         """
-        current_count = len(self.validators)
 
-        if count > current_count:
-            for _ in range(current_count - count):
+        if count > self.validators_count:
+            for _ in range(self.validators_count - count):
                 self.start_validator(namegen())
-        elif count < current_count:
-            if current_count > 0:
-                for i in range(count - current_count):
-                    with self.lock:
-                        name = list(self.flags.keys())[i]
-                        self.flags[name]["quit"] = True
+        elif count < self.validators_count:
+            self.end_validators(self.validators_count - count)
 
     def send_order_all(self, flag, value):
         """
@@ -73,3 +70,18 @@ class ValidatorManager:
         with self.lock:
             for validator in self.validators:
                 self.flags[validator][flag] = value
+
+    def end_validator(self, name):
+        with self.lock:
+            self.flags[name]["quit"] = True
+        self.validators_count -= 1
+
+    def end_validators(self, count):
+        to_end = max(count, self.validators_count)
+        ended = 0
+        for validator in self.flags:
+            if not self.flags[validator]["quit"]:
+                self.end_validator(validator)
+                ended += 1
+                if ended == to_end:
+                    break

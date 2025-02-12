@@ -82,7 +82,7 @@ class ScraperManager:
     def end_scrapers(self, count):
         to_end = max(count, self.scrapers_count)
         ended = 0
-        for scraper in self.scrapers:
+        for scraper in self.flags:
             if not self.flags[scraper]["quit"]:
                 self.end_scraper(scraper)
                 ended += 1

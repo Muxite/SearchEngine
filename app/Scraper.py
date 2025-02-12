@@ -1,4 +1,5 @@
 from selenium import webdriver
+from selenium.common import NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
@@ -7,6 +8,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 import threading
 import time
 from queue import Empty
+from utils import push_list
 
 class Scraper:
     def __init__(self, name, lock, flags, in_queue, texts_queue, validate_queue, timeout=1):
@@ -72,11 +74,14 @@ class Scraper:
         """
         self.browser.get(url)
         WebDriverWait(self.browser, self.timeout).until(ec.presence_of_element_located((By.TAG_NAME, "body")))
-        text = self.browser.find_element(By.TAG_NAME, "body").text
-        a_tags = self.browser.find_elements(By.TAG_NAME, 'a')
-        found_links = [a.get_attribute('href') for a in a_tags]
-        self.report(f"Got page {url}")
-        return text, found_links
+        try:
+            text = self.browser.find_element(By.TAG_NAME, "body").text
+            a_tags = self.browser.find_elements(By.TAG_NAME, 'a')
+            found_links = [a.get_attribute('href') for a in a_tags]
+            self.report(f"Got page {url}")
+            return text, found_links
+        except StaleElementReferenceException:
+            return None, None
 
     def report(self, text):
         """
@@ -115,8 +120,9 @@ class Scraper:
                 try:
                     link = self.in_queue.get(timeout=self.timeout)
                     text, found_links = self.get_page(link)
-                    self.texts_queue.put((link, text))
-                    self.validate_queue.put(found_links)
+                    if text:
+                        self.texts_queue.put((link, text))
+                        push_list(self.validate_queue, found_links)
                 except Empty:
                     time.sleep(self.timeout)
             else:

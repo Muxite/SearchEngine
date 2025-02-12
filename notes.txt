@@ -1,5 +1,19 @@
 General Notes About the Project.
 
+2025-02-03
+Use MySQL for a learning experience. Will likely use INNER JOIN for many-to-many system.
+Databasing will be done with a MySQL docker container with a docker volume mounted to it.
+- Volumes pretend to be a folder in the container. When writing is done, it automatically
+puts the data in the volume.
+Use a docker-compose.yml file to define how the multi-container program will work.
+Use mysql.connector in Python to do stuff to the database.
+- set a cursor
+- tell the cursor to execute(SQL COMMAND)
+
+2025-01-30
+120s, 24 scrapers gets 194 pages
+120s, 8 scrapers gets 163 pages
+
 2024-12-29
 ScraperManager will handle Scraper threads, ValidatorManager will handle Validator threads.
 Proper shutdown of the data gathering system will be a "flush":
@@ -12,4 +26,6 @@ Proper shutdown of the data gathering system will be a "flush":
 7. ValidatorManager: Validator quit flag set to True. Validator: All exit run_loop.
 8. ValidatorManager: Save seen_links_set
 9. ScraperManager: Save link queue.
+
+
 

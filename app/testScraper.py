@@ -11,7 +11,7 @@ def test_Scraper():
     validate_queue = Queue()
     in_queue = Queue()
 
-    # URL to scrape
+    # URL to scraper
     url = "https://pypi.org/project/pip/"
     in_queue.put(url)
     url = "https://en.wikipedia.org/wiki/Main_Page"
