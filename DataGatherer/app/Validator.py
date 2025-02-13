@@ -46,7 +46,7 @@ class Validator:
                 try:
                     batch = []
                     for _ in range(self.batch_size):
-                        batch.append(self.in_queue.get(timeout=self.timeout))
+                        batch.append(self.in_queue.get_nowait())
                     if batch:
                         for item in batch:
                             if not item in self.seen_links_set:

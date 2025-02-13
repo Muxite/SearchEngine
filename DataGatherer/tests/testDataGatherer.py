@@ -1,8 +1,7 @@
-from ScraperManager import ScraperManager
 from queue import Queue
 import time
 
-from DataGatherer import DataGatherer
+from DataGatherer.app.DataGatherer import DataGatherer
 
 
 def test_data_gatherer():

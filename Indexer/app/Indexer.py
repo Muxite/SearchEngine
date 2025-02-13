@@ -2,8 +2,18 @@ from collections import Counter
 from math import log
 import threading
 import time
-from queue import Empty
+import queue
+import redis
+import json
+import argparse
 
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Run the Indexer to turn text to tags.')
+    parser.add_argument("--timeout", type=int, default=120, help="Timeout in seconds.")
+    parser.add_argument("--redis_host", type=str, default="none", help="Redis host.")
+    parser.add_argument("--redis_port", type=int, default=6379, help="Redis port.")
+    return parser.parse_args()
 
 # Convert everything to lowercase.
 # Eliminate all super-common, low meaning words.
@@ -13,17 +23,18 @@ from queue import Empty
 # At the same time, train Inverse Document Frequency
 
 class Indexer:
-    def __init__(self, in_queue, out_queue, timeout=2, batch_size=10):
+    def __init__(self, redis_client=None, timeout=120, worker_timeout=2):
         """
-        Take an queue of link, text pairs and put them into a link, tag pair into an out queue.
+        Take a queue of link, text pairs and put them into a link, tag pair into an out queue.
+        :param redis_client: redis client to sync with.
         :param in_queue: Queue of link text pairs.
         :param out_queue: Queue of link tag pairs.
         """
-        self.in_queue = in_queue
-        self.out_queue = out_queue
+        self.in_queue = queue.Queue()
+        self.out_queue = queue.Queue()
+        self.lock = threading.Lock()
         self.total_counts = {}
         self.document_count = 0
-        self.lock = threading.Lock()
         self.common_words = [
             "the", "be", "to", "of", "and", "a", "in", "that", "have", "I",
             "it", "for", "not", "on", "with", "he", "as", "you", "do", "at",
@@ -41,9 +52,24 @@ class Indexer:
             "'", '"', '“', '”', '‘', '’', '<', '>', '©', '®', '™', '$', '#', '@', '&', '^', '~', '|', '\\',
             '€', '£', '¥', '•', '¶', '…', '—', '›', '‹', '•', '...', '–'
         ]
-        self.active = True
+        self.redis_client = redis_client
+        self.active = False
+        self.thread = self.start()
         self.timeout = timeout
-        self.batch_size = batch_size
+        self.worker_timeout = worker_timeout
+
+        if redis_client:
+            threading.Thread(
+                target=self.sync_redis(self.redis_client)
+            ).start()
+
+    def start(self):
+        self.active = True
+        thread = threading.Thread(
+            target=self.loop
+        )
+        thread.start()
+        return thread
 
     def tfidf_score(self, text, is_document=True):
         """
@@ -100,13 +126,43 @@ class Indexer:
         :return:
         """
         while self.active:
-            batch = []
             try:
-                for _ in range(self.batch_size):
-                    batch.append(self.in_queue.get(timeout=self.timeout))
-                if batch:
-                    for link, text in batch:
-                        tags = self.tag(text)
-                        self.out_queue.put((link, tags))
-            except Empty:
+                link, text = self.in_queue.get(timeout=self.timeout)
+                tags = self.tag(text)
+                self.out_queue.put((link, tags))
+            except queue.Empty:
                 time.sleep(self.timeout)
+
+    def sync_redis(self, redis_client):
+        """Refreshes in_queue and out_queue with Redis container."""
+        while self.active:
+            try:
+                data_in = redis_client.lpop("link_text_queue")
+                if data_in:
+                    self.in_queue.put(data_in)
+            except redis.exceptions.RedisError:
+                time.sleep(1)
+
+            try:
+                data_out = self.out_queue.get(timeout=0.1)
+                redis_client.rpush("link_tag_queue", json.dumps(data_out))
+            except queue.Empty:
+                pass  # No data to process, continue
+            except redis.exceptions.RedisError:
+                time.sleep(1)
+
+def run():
+    args = parse_args()
+
+    r = None
+    if args.redis_host != "none":
+        r = redis.Redis(host=args.redis_host, port=args.redis_port, db=0)
+
+    indexer = Indexer(
+        redis_client=r,
+        timeout=args.timeout,
+    )
+
+
+if __name__ == "__main__":
+    run()

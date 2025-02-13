@@ -1,4 +1,4 @@
-from ScraperManager import ScraperManager
+from DataGatherer.app.ScraperManager import ScraperManager
 from queue import Queue
 import time
 

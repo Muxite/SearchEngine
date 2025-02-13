@@ -60,7 +60,9 @@ class Scraper:
         return browser
 
     def start(self):
-        self.thread = threading.Thread(target=self.run_loop)
+        self.thread = threading.Thread(
+            target=self.run_loop
+        )
         self.thread.start()
         self.report("Started")
 
@@ -118,7 +120,7 @@ class Scraper:
             # regular operation
             if self.operating:
                 try:
-                    link = self.in_queue.get(timeout=self.timeout)
+                    link = self.in_queue.get_nowait()
                     text, found_links = self.get_page(link)
                     if text:
                         self.texts_queue.put((link, text))

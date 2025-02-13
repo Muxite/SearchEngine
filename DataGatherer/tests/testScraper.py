@@ -1,8 +1,8 @@
-from Scraper import Scraper
+from DataGatherer.app.Scraper import Scraper
 from queue import Queue
 import time
 import threading
-from utils import delayed_action
+
 
 def test_Scraper():
     # creating queues for text and validation

@@ -7,5 +7,5 @@ RUN apt-get update && apt-get install -y wget unzip && \
     apt-get clean
 COPY requirements.txt .
 RUN pip install -r requirements.txt
-COPY app/ /app/
+COPY app /app/
 ENTRYPOINT ["python", "DataGatherer.py"]

@@ -1,3 +1,5 @@
+import queue
+
 from ValidatorManager import ValidatorManager
 from ScraperManager import ScraperManager
 from queue import Queue
@@ -25,7 +27,7 @@ class DataGatherer:
                  redis_client=None,
                  autostart=True,
                  autostop=True,
-                 timeout=120,
+                 timeout=60,
                  scrapers=8,
                  validators=1,
                  scraper_timeout=2,
@@ -72,7 +74,11 @@ class DataGatherer:
             self.start()
 
         if redis_client:
-            self.start_pushing(self.redis_client)
+            threading.Thread(
+                target=self.sync_redis,
+                args=(self.redis_client,),
+                daemon=True
+            ).start()
 
     def update_threads(self, scrapers, validators):
         """
@@ -122,26 +128,19 @@ class DataGatherer:
         self.validators = 0
         time.sleep(5)
 
-    def start_pushing(self, redis_client):
-        """
-        Begin pushing to Redis.
-        return: Redis sync thread.
-        """
-        sync_thread = threading.Thread(target=self.sync_redis, args=(redis_client,), daemon=True)
-        sync_thread.start()
-        return sync_thread
 
     def sync_redis(self, redis_client):
         """Transfers data from local queue to Redis"""
         while self.running:
-            while not self.out_queue.empty():
-                data = self.out_queue.get()
-                try:
-                    redis_client.rpush("link_text_queue", json.dumps(data))
-                    print(f"Synced to Redis: {data}")
-                except Exception as e:
-                    print(e)
-            time.sleep(1)
+            try:
+                data = self.out_queue.get_nowait()
+                redis_client.rpush("link_text_queue", json.dumps(data))
+                print(f"Synced to Redis {data}")
+            except queue.Empty:
+                time.sleep(1)
+            except redis.exceptions.RedisError as e:
+                print(e)
+                time.sleep(1)
 
     def save(self, location='links.pkl'):
         with open(location, 'wb') as f:
