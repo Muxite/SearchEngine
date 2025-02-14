@@ -1,5 +1,4 @@
 import queue
-
 from ValidatorManager import ValidatorManager
 from ScraperManager import ScraperManager
 from queue import Queue
@@ -31,7 +30,8 @@ class DataGatherer:
                  scrapers=8,
                  validators=1,
                  scraper_timeout=2,
-                 validator_timeout=2
+                 validator_timeout=2,
+                 sync_period=10
                  ):
         """
         Starts an object that takes a seed link and generates links and text to a queue.
@@ -76,7 +76,7 @@ class DataGatherer:
         if redis_client:
             threading.Thread(
                 target=self.sync_redis,
-                args=(self.redis_client,),
+                args=(self.redis_client, sync_period),
                 daemon=True
             ).start()
 
@@ -129,7 +129,7 @@ class DataGatherer:
         time.sleep(5)
 
 
-    def sync_redis(self, redis_client):
+    def sync_redis(self, redis_client, sync_period):
         """Transfers data from local queue to Redis"""
         while self.running:
             try:
@@ -137,10 +137,10 @@ class DataGatherer:
                 redis_client.rpush("link_text_queue", json.dumps(data))
                 print(f"Synced to Redis {data}")
             except queue.Empty:
-                time.sleep(1)
+                time.sleep(sync_period)
             except redis.exceptions.RedisError as e:
                 print(e)
-                time.sleep(1)
+                time.sleep(sync_period)
 
     def save(self, location='links.pkl'):
         with open(location, 'wb') as f:

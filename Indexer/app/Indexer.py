@@ -23,7 +23,7 @@ def parse_args():
 # At the same time, train Inverse Document Frequency
 
 class Indexer:
-    def __init__(self, redis_client=None, timeout=120, worker_timeout=2):
+    def __init__(self, redis_client=None, timeout=120, worker_timeout=2, sync_period=2):
         """
         Take a queue of link, text pairs and put them into a link, tag pair into an out queue.
         :param redis_client: redis client to sync with.
@@ -60,7 +60,8 @@ class Indexer:
 
         if redis_client:
             threading.Thread(
-                target=self.sync_redis(self.redis_client)
+                target=self.sync_redis,
+                args=(self.redis_client, sync_period)
             ).start()
 
     def start(self):
@@ -133,7 +134,7 @@ class Indexer:
             except queue.Empty:
                 time.sleep(self.timeout)
 
-    def sync_redis(self, redis_client):
+    def sync_redis(self, redis_client, sync_period):
         """Refreshes in_queue and out_queue with Redis container."""
         while self.active:
             try:
@@ -141,15 +142,15 @@ class Indexer:
                 if data_in:
                     self.in_queue.put(data_in)
             except redis.exceptions.RedisError:
-                time.sleep(1)
+                time.sleep(sync_period)
 
             try:
                 data_out = self.out_queue.get(timeout=0.1)
                 redis_client.rpush("link_tag_queue", json.dumps(data_out))
             except queue.Empty:
-                pass  # No data to process, continue
+                time.sleep(sync_period)
             except redis.exceptions.RedisError:
-                time.sleep(1)
+                time.sleep(sync_period)
 
 def run():
     args = parse_args()
