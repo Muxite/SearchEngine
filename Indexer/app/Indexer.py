@@ -129,7 +129,7 @@ class Indexer:
         while self.active:
             try:
                 link, text = self.in_queue.get(timeout=self.timeout)
-                tags = self.tag(text)
+                tags = self.tag(text, count=5)
                 self.out_queue.put((link, tags))
             except queue.Empty:
                 time.sleep(self.timeout)

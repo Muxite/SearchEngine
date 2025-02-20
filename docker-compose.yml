@@ -1,20 +1,51 @@
 services:
+  cache:
+    image: redis:6.2-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+
   datagatherer:
     build:
       context: ./DataGatherer
       dockerfile: Dockerfile
+    restart: on-failure
     entrypoint: ["python", "DataGatherer.py"]
     command: [
       "--seed", "https://en.wikipedia.org/wiki/Main_Page",
       "--timeout", "60",
       "--scrapers", "8",
       "--validators", "1",
-      "--redis_host", "localhost",
+      "--redis_host", "cache",
       "--redis_port", "6379"
     ]
 
-  cache:
-    image: redis:6.2-alpine
-    restart: always
+  databaser:
+    build:
+      context: ./Databaser
+      dockerfile: Dockerfile
+    entrypoint: ["python", "DataGatherer.py"]
+    command: [
+      "--timeout", "120",
+      "--sync_period", "30",
+      "--redis_host", "cache",
+      "--redis_port", "6379",
+      "--mysql_host", "host",
+      "--mysql_port", "3306",
+      "--mysql_user", "user",
+      "--mysql_password", "pw",
+      "--mysql_database", "db"
+    ]
+
+  mysql:
+    image: "mysql:5.7"
+    container_name: "mysql"
+    environment:
+      MYSQL_ROOT_PASSWORD: "pw"
+      MYSQL_DATABASE: "db"
+      MYSQL_USER: "user"
+      MYSQL_PASSWORD: "pw"
     ports:
-      - "6379:6379"
+      - "3306:3306"
+    networks:
+      - app_network

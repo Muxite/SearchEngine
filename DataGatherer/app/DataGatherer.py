@@ -135,7 +135,7 @@ class DataGatherer:
             try:
                 data = self.out_queue.get_nowait()
                 redis_client.rpush("link_text_queue", json.dumps(data))
-                print(f"Synced to Redis {data}")
+                print(f"Synced to Redis")
             except queue.Empty:
                 time.sleep(sync_period)
             except redis.exceptions.RedisError as e:
