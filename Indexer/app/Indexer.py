@@ -6,6 +6,7 @@ import queue
 import redis
 import json
 import argparse
+from utils import delayed_action
 
 
 def parse_args():
@@ -53,24 +54,28 @@ class Indexer:
             '€', '£', '¥', '•', '¶', '…', '—', '›', '‹', '•', '...', '–'
         ]
         self.redis_client = redis_client
-        self.active = False
-        self.thread = self.start()
         self.timeout = timeout
+        self.sync_period = sync_period
+        self.active = False
         self.worker_timeout = worker_timeout
+        self.start(self.timeout)
 
         if redis_client:
             threading.Thread(
                 target=self.sync_redis,
-                args=(self.redis_client, sync_period)
+                args=(self.redis_client, self.sync_period)
             ).start()
 
-    def start(self):
+    def start(self, timeout):
         self.active = True
+        delayed_action(timeout, self.quit)
         thread = threading.Thread(
             target=self.loop
         )
         thread.start()
-        return thread
+
+    def quit(self):
+        self.active = False
 
     def tfidf_score(self, text, is_document=True):
         """
@@ -107,6 +112,10 @@ class Indexer:
         """
         words_list[:] = [word for word in words_list if word not in to_remove]
 
+    def clean(self, words_list, to_remove):
+        for char in to_remove:
+            words_list.remove(char)
+
     def tag(self, text, count=3):
         """
         Returns ideal tags for indexing a given text.
@@ -128,11 +137,11 @@ class Indexer:
         """
         while self.active:
             try:
-                link, text = self.in_queue.get(timeout=self.timeout)
+                link, text = self.in_queue.get_nowait()
                 tags = self.tag(text, count=5)
                 self.out_queue.put((link, tags))
             except queue.Empty:
-                time.sleep(self.timeout)
+                time.sleep(self.worker_timeout)
 
     def sync_redis(self, redis_client, sync_period):
         """Refreshes in_queue and out_queue with Redis container."""
@@ -140,13 +149,14 @@ class Indexer:
             try:
                 data_in = redis_client.lpop("link_text_queue")
                 if data_in:
-                    self.in_queue.put(data_in)
+                    self.in_queue.put(json.loads(data_in))
             except redis.exceptions.RedisError:
                 time.sleep(sync_period)
 
             try:
                 data_out = self.out_queue.get(timeout=0.1)
                 redis_client.rpush("link_tag_queue", json.dumps(data_out))
+                print(f"tagged and synced {data_out}")
             except queue.Empty:
                 time.sleep(sync_period)
             except redis.exceptions.RedisError:

@@ -23,7 +23,6 @@ def parse_args():
 class DataGatherer:
     def __init__(self,
                  seed,
-                 redis_client=None,
                  autostart=True,
                  autostop=True,
                  timeout=60,
@@ -31,7 +30,6 @@ class DataGatherer:
                  validators=1,
                  scraper_timeout=2,
                  validator_timeout=2,
-                 sync_period=10
                  ):
         """
         Starts an object that takes a seed link and generates links and text to a queue.
@@ -47,7 +45,6 @@ class DataGatherer:
         :param validator_timeout: how frequently the validators check for links.
         """
 
-        self.redis_client = redis_client
         self.sync_thread = None
         self.out_queue = Queue()
         self.autostart = autostart
@@ -73,12 +70,14 @@ class DataGatherer:
             self.update_threads(self.scrapers, self.validators)
             self.start()
 
-        if redis_client:
-            threading.Thread(
-                target=self.sync_redis,
-                args=(self.redis_client, sync_period),
-                daemon=True
-            ).start()
+    def connect_redis(self, host, port, sync_period):
+        redis_client = redis.Redis(host=host, port=port, db=0)
+
+        threading.Thread(
+            target=self.sync_redis,
+            args=(redis_client, sync_period),
+            daemon=True
+        ).start()
 
     def update_threads(self, scrapers, validators):
         """
@@ -135,7 +134,6 @@ class DataGatherer:
             try:
                 data = self.out_queue.get_nowait()
                 redis_client.rpush("link_text_queue", json.dumps(data))
-                print(f"Synced to Redis")
             except queue.Empty:
                 time.sleep(sync_period)
             except redis.exceptions.RedisError as e:
@@ -150,17 +148,15 @@ class DataGatherer:
 def run():
     args = parse_args()
 
-    r = None
-    if args.redis_host != "none":
-        r = redis.Redis(host=args.redis_host, port=args.redis_port, db=0)
-
     datagatherer = DataGatherer(
         args.seed,
-        redis_client=r,
         timeout=args.timeout,
         scrapers=args.scrapers,
         validators=args.validators
     )
+
+    if args.redis_host != "none":
+        datagatherer.connect_redis(args.redis_host, args.redis_port, 5)
 
 
 if __name__ == "__main__":

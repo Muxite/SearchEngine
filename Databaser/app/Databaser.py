@@ -20,7 +20,7 @@ def parse_args():
 
 
 class Databaser:
-    def __init__(self, redis_client, connection, sync_period=30, timeout=120):
+    def __init__(self, sync_period=30, timeout=120):
         """
         Stores link-tags pairs into a MySQL database. Uses 3 tables, "links", "tags", "junction".
         :param redis_client: Redis to connect to.
@@ -28,14 +28,14 @@ class Databaser:
         :param sync_period: How often data transfer is done.
         :param timeout: Time until automatic shutdown.
         """
-        self.redis = redis_client
-        self.connection = connection
-        self.cursor = self.connection.cursor()
+
+        self.redis_client = None
+        self.connection = None
+        self.cursor = None
         self.sync_period = sync_period
         self.timeout = timeout
         self.active = False
-        self.setup()
-        self.stream(self.timeout)
+        self.await_stream()
 
 
     def setup(self):
@@ -53,14 +53,45 @@ class Databaser:
                             "FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE)")
         self.connection.commit()
 
+    def connect(self, redis_host, redis_port, mysql_host, mysql_port,
+                      mysql_user, mysql_password, mysql_database ):
+        redis_client = redis.Redis(host=redis_host, port=redis_port, db=0)
+        mysql_connection = mysql.connector.connect(
+            host=mysql_host,
+            port=mysql_port,
+            user=mysql_user,
+            password=mysql_password,
+            database=mysql_database
+        )
+        self.connection = mysql_connection
+        self.cursor = mysql_connection.cursor()
+        self.redis_client = redis_client
+
+
     def quit(self):
         self.active = False
+
+    def await_stream(self, interval=5, retries=20):
+        """
+        Start the stream and stream timer when a connection is established.
+        """
+
+        while not self.active:
+            if not self.connection or not self.cursor or not self.redis_client:
+                if retries < 0:
+                    return
+                retries -= 1
+                time.sleep(interval)
+            else:
+                self.setup()
+                self.stream(self.timeout)
 
     def stream(self, timeout):
         """
         Continuously move data from Redis to MySQL database.
         :param timeout: Pause time after failed movement.
         """
+
         self.active = True
         delayed_action(timeout, self.quit)
         while self.active:
@@ -73,7 +104,8 @@ class Databaser:
         :return: True if successful, False otherwise.
         """
         try:
-            link, tags = json.loads(self.redis.lpop("link_tag_queue"))
+            link, tags = json.loads(self.redis_client.lpop("link_tag_queue"))
+            print(f"Databasing: link: {link}    tags: {tags}")
             self.cursor.execute("INSERT IGNORE INTO links (link) VALUES (%s)", (link,))
             tag_tuple = *tags,
             self.cursor.executemany("INSERT IGNORE INTO tags VALUES %s", tag_tuple)
@@ -99,25 +131,20 @@ class Databaser:
 
 def run():
     args = parse_args()
-    r = redis.Redis(
-        host=args.redis_host,
-        port=args.redis_port,
-        db=0
-    )
-
-    c = mysql.connector.connect(
-        host=args.mysql_host,
-        port=args.mysql_port,
-        user=args.mysql_user,
-        password=args.mysql_password,
-        database=args.mysql_database
-    )
 
     databaser = Databaser(
-        redis_client=r,
-        connection=c,
         sync_period=args.sync_period,
         timeout=args.timeout
+    )
+
+    databaser.connect(
+        args.redis_host,
+        args.redis_port,
+        args.mysql_host,
+        args.mysql_port,
+        args.mysql_user,
+        args.mysql_password,
+        args.mysql_database
     )
 
 

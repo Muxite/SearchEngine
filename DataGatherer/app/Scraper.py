@@ -1,5 +1,5 @@
 from selenium import webdriver
-from selenium.common import NoSuchElementException, StaleElementReferenceException
+from selenium.common import StaleElementReferenceException
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
