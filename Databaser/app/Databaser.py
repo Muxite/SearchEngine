@@ -30,8 +30,8 @@ class Databaser:
         """
 
         self.redis_client = None
-        self.connection = None
-        self.cursor = None
+        self.mysql_connection = None
+        self.mysql_cursor = None
         self.sync_period = sync_period
         self.timeout = timeout
         self.active = False
@@ -39,19 +39,19 @@ class Databaser:
 
 
     def setup(self):
-        self.cursor.execute("CREATE TABLE IF NOT EXISTS links ("
+        self.mysql_cursor.execute("CREATE TABLE IF NOT EXISTS links ("
                             "id INT AUTO_INCREMENT PRIMARY KEY, "
                             "link VARCHAR(2048) NOT NULL")
-        self.cursor.execute("CREATE TABLE IF NOT EXISTS tags ("
+        self.mysql_cursor.execute("CREATE TABLE IF NOT EXISTS tags ("
                             "id INT AUTO_INCREMENT PRIMARY KEY, "
                             "link VARCHAR(64) NOT NULL")
-        self.cursor.execute("CREATE TABLE IF NOT EXISTS junction ("
+        self.mysql_cursor.execute("CREATE TABLE IF NOT EXISTS junction ("
                             "link_id INT, "
                             "tag_id INT, "
                             "PRIMARY KEY (link_id, tag_id),"
                             "FOREIGN KEY (link_id) REFERENCES links(id) ON DELETE CASCADE,"
                             "FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE)")
-        self.connection.commit()
+        self.mysql_connection.commit()
 
     def connect(self, redis_host, redis_port, mysql_host, mysql_port,
                       mysql_user, mysql_password, mysql_database ):
@@ -63,8 +63,8 @@ class Databaser:
             password=mysql_password,
             database=mysql_database
         )
-        self.connection = mysql_connection
-        self.cursor = mysql_connection.cursor()
+        self.mysql_connection = mysql_connection
+        self.mysql_cursor = mysql_connection.cursor()
         self.redis_client = redis_client
 
 
@@ -77,7 +77,7 @@ class Databaser:
         """
 
         while not self.active:
-            if not self.connection or not self.cursor or not self.redis_client:
+            if not self.mysql_connection or not self.mysql_cursor or not self.redis_client:
                 if retries < 0:
                     return
                 retries -= 1
@@ -106,23 +106,23 @@ class Databaser:
         try:
             link, tags = json.loads(self.redis_client.lpop("link_tag_queue"))
             print(f"Databasing: link: {link}    tags: {tags}")
-            self.cursor.execute("INSERT IGNORE INTO links (link) VALUES (%s)", (link,))
+            self.mysql_cursor.execute("INSERT IGNORE INTO links (link) VALUES (%s)", (link,))
             tag_tuple = *tags,
-            self.cursor.executemany("INSERT IGNORE INTO tags VALUES %s", tag_tuple)
+            self.mysql_cursor.executemany("INSERT IGNORE INTO tags VALUES %s", tag_tuple)
 
             # get all ids for link and all tags
-            self.cursor.execute("SELECT id FROM links WHERE link_id = %s", (link,))
-            link_id = self.cursor.fetchone()[0]
-            self.cursor.execute("INSERT IGNORE INTO junction VALUES %s", (link_id,))
+            self.mysql_cursor.execute("SELECT id FROM links WHERE link_id = %s", (link,))
+            link_id = self.mysql_cursor.fetchone()[0]
+            self.mysql_cursor.execute("INSERT IGNORE INTO junction VALUES %s", (link_id,))
             junction_row = []
             for tag in tags:
-                self.cursor.execute("SELECT id FROM tags WHERE link = %s", (tag,))
-                tag_id = self.cursor.fetchone()[0]
+                self.mysql_cursor.execute("SELECT id FROM tags WHERE link = %s", (tag,))
+                tag_id = self.mysql_cursor.fetchone()[0]
                 junction_row.append((link_id, tag_id))
 
             # fill in junction table.
-            self.cursor.executemany("INSERT IGNORE INTO junction VALUES (%s, %s)", junction_row)
-            self.connection.commit()
+            self.mysql_cursor.executemany("INSERT IGNORE INTO junction VALUES (%s, %s)", junction_row)
+            self.mysql_connection.commit()
 
             return True
         except TypeError:
