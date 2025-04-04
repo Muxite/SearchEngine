@@ -14,17 +14,24 @@ def hash_text(text):
 
 class Validator:
     def __init__(self, redis, mysql):
+        """
+        Initialize validation process that moves unseen links to a view queue.
+        Cross-references with Redis and MySQL as part of DataGatherer.
+        """
         self.redis = redis
         self.mysql = mysql
+        self.pipeline = []
         self.cursor = self.mysql.cursor()
-
         self.set = None
 
     def validate(self, link, text):
-        if link:
-            if self.redis.sismember("visited_links", link):
-                return False
-
-        if link:
-
+        """
+        Run pipeline on a link.
+        :param link:
+        :param text:
+        :return:
+        """
+        for check in self.pipeline:
+            if check(link):
+                break
 

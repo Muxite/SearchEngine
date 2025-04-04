@@ -1,5 +1,17 @@
 General Notes About the Project.
 
+2025-04-04 (Finals upon us!)
+Redis will be the fast working cache, cleared after gathering. MySQL is long term.
+Validator will now be Redis-dependent, and a lot more intensive. It will act as a pipeline.
+If a link fails a stage, it will be removed as a duplicate.
+Stages:
+- Check Redis for duplicate (links of this session).
+- Check Redis hashed texts for duplicate.
+- Check MySQL. (maybe)
+Redis will attempt to load MySQL hashes and links on startup.
+There is room for error here, so delays in syncing/race conditions are acceptable.
+
+
 2025-02-03
 Use MySQL for a learning experience. Will likely use INNER JOIN for many-to-many system.
 Databasing will be done with a MySQL docker container with a docker volume mounted to it.

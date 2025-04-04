@@ -1,11 +1,9 @@
-import queue
 from ScraperManager import ScraperManager
 from queue import Queue
 import time
 from utils import delayed_action
 import redis
-import json
-import threading
+from Syncer import Syncer
 import argparse
 
 def parse_args():
@@ -33,7 +31,7 @@ class DataGatherer:
         :param scraper_timeout: how frequently the scrapers check for links.
         """
 
-        self.sync_thread = None
+        self.syncer = None
         self.out_queue = Queue()
         self.timeout = timeout
         self.running = False
@@ -50,13 +48,17 @@ class DataGatherer:
         self.start()
 
     def connect_redis(self, host, port, sync_period):
-        redis_client = redis.Redis(host=host, port=port, db=0)
+        """Start agent that syncs to redis."""
 
-        threading.Thread(
-            target=self.sync_redis,
-            args=(redis_client, sync_period),
-            daemon=True
-        ).start()
+        redis_client = redis.Redis(host=host, port=port, db=0)
+        # Set up the syncer to push from out_queue to the "link_text_queue" in Redis.
+        self.syncer = Syncer(
+            redis_client,
+            push_map=[(self.out_queue, "link_text"), (self.validation_queue, "unverified_links")],
+            pull_map=[(self.link_queue, "verified_links")],
+            sync_period=sync_period
+        )
+        self.syncer.start()
 
     def update_threads(self, scrapers):
         """
@@ -91,23 +93,8 @@ class DataGatherer:
         # **********EDITS NEEDED AFTER VALIDATOR&&%&@#(%&@(*&%(@
         time.sleep(5)
 
-
-    def sync_redis(self, redis_client, sync_period):
-        """
-        Transfers data from local queue to Redis
-
-        :param redis_client:
-        :param sync_period:
-        """
-        while self.running:
-            try:
-                data = self.out_queue.get_nowait()
-                redis_client.rpush("link_text_queue", json.dumps(data))
-            except queue.Empty:
-                time.sleep(sync_period)
-            except redis.exceptions.RedisError as e:
-                print(e)
-                time.sleep(sync_period)
+        if self.syncer:
+            self.syncer.stop()
 
 
 def run():
@@ -120,7 +107,7 @@ def run():
     )
 
     if args.redis_host != "none":
-        datagatherer.connect_redis(args.redis_host, args.redis_port, 5)
+        datagatherer.connect_redis(args.redis_host, args.redis_port, sync_period=5)
 
 
 if __name__ == "__main__":

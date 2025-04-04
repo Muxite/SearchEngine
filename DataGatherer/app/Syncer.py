@@ -8,7 +8,7 @@ import threading
 class Syncer:
     def __init__(self, redis_client, push_map=None, pull_map=None, sync_period=5):
         """
-        Initializes the Syncer.
+        Initializes Syncer agent.
 
         :param redis_client: Redis client instance.
         :param push_map: Pairings of queues to push to Redis.
@@ -23,7 +23,9 @@ class Syncer:
         self.thread = None
 
     def sync(self):
-        """Continuously syncs data between queues and Redis."""
+        """
+        Continuously syncs data between queues and Redis.
+        """
         while self.running:
 
             # push data to Redis until cannot pull more.
@@ -45,10 +47,12 @@ class Syncer:
                     except redis.exceptions.RedisError:
                         break
 
-            time.sleep(self.sync_period)  # Avoid high CPU usage
+            time.sleep(self.sync_period)
 
     def start(self):
-        """Starts the sync process in a background thread."""
+        """
+        Starts syncing using a thread.
+        """
         if not self.running:
             self.running = True
             self.thread = threading.Thread(target=self.sync, daemon=True)
@@ -56,7 +60,9 @@ class Syncer:
             print("Syncer started.")
 
     def stop(self):
-        """Gracefully stops the sync process."""
+        """
+        Stops the sync process.
+        """
         self.running = False
         if self.thread:
             self.thread.join()
