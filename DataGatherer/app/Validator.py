@@ -1,6 +1,7 @@
 import hashlib
-import hashlib
 import redis
+from queue import Queue
+# TIGHTEN THIS TIGTHTENM THIS
 
 
 def hash_text(text):
@@ -22,16 +23,21 @@ class Validator:
         self.mysql = mysql
         self.pipeline = []
         self.cursor = self.mysql.cursor()
+        self.verified_links = Queue()
+        self.
         self.set = None
 
     def validate(self, link, text):
         """
         Run pipeline on a link.
-        :param link:
-        :param text:
+        :param link: The link to validate.
+        :param text: The text content.
         :return:
         """
         for check in self.pipeline:
-            if check(link):
+            if check(link, text):
                 break
 
+
+
+    def

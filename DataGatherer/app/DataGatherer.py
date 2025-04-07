@@ -4,6 +4,7 @@ import time
 from utils import delayed_action
 import redis
 from Syncer import Syncer
+import Validator as v
 import argparse
 
 def parse_args():
@@ -54,8 +55,9 @@ class DataGatherer:
         # Set up the syncer to push from out_queue to the "link_text_queue" in Redis.
         self.syncer = Syncer(
             redis_client,
-            push_map=[(self.out_queue, "link_text"), (self.validation_queue, "unverified_links")],
-            pull_map=[(self.link_queue, "verified_links")],
+            push_map=[(self.out_queue, "link_text", False, -1),
+                      (self.validation_queue, "seen_links", False, -1)],
+            pull_map=[(self.link_queue, "verified_links", False, -1)],
             sync_period=sync_period
         )
         self.syncer.start()

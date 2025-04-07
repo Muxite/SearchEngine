@@ -11,8 +11,8 @@ class Syncer:
         Initializes Syncer agent.
 
         :param redis_client: Redis client instance.
-        :param push_map: Pairings of queues to push to Redis.
-        :param pull_map: Pairings of Redis to pull to queues.
+        :param push_map: Pairings of queues to push to Redis. Copy only or push.
+        :param pull_map: Pairings of Redis to pull to queues. Copy only or pull.
         :param sync_period: Time to wait between syncs.
         """
         self.redis_client = redis_client
@@ -25,25 +25,47 @@ class Syncer:
     def sync(self):
         """
         Continuously syncs data between queues and Redis.
+        Tuple format is: (queue, redis name, copy only?, item limit).
+        An -1 item limit means there is no limit.
         """
         while self.running:
 
             # push data to Redis until cannot pull more.
-            for q, redis_key in self.push_map.items():
+            for q, redis_key, copy_only, limit in self.push_map:
+                loops = 0
                 while True:
                     try:
                         data = q.get_nowait()
-                        self.redis_client.rpush(redis_key, json.dumps(data))
+                        if copy_only:
+                            self.redis_client.rpush(redis_key, json.dumps(data))
+                            q.put(data)
+                        else:
+                            self.redis_client.rpush(redis_key, json.dumps(data))
+                        loops += 1
+
+                        if limit != -1 and loops >= limit:
+                            break
                     except queue.Empty:
                         break
 
             # Pull data from Redis until cannot pull more.
-            for q, redis_key in self.pull_map.items():
+            for q, redis_key, copy_only, limit in self.pull_map:
+                loops = 0
                 while True:
                     try:
-                        data = self.redis_client.lpop(redis_key)
+                        if copy_only:
+                            data = self.redis_client.lindex(redis_key, 0)
+                        else:
+                            data = self.redis_client.lpop(redis_key)
                         if data:
                             q.put(json.loads(data))
+                            loops += 1
+                        else:
+                            break
+
+                        if limit != -1 and loops >= limit:
+                            break
+
                     except redis.exceptions.RedisError:
                         break
 
