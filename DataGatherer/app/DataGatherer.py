@@ -38,10 +38,10 @@ class DataGatherer:
         self.running = False
         self.link_queue = Queue()
         self.link_queue.put(seed)
-        self.validation_queue = Queue()
+        self.validate_queue = Queue()
         self.Scraper = ScraperManager(self.link_queue,
                                       self.out_queue,
-                                      self.link_queue,
+                                      self.validate_queue,
                                       scraper_timeout,
         )
         self.scrapers = scrapers
@@ -52,11 +52,8 @@ class DataGatherer:
         """Start agent that syncs to redis."""
 
         redis_client = redis.Redis(host=host, port=port, db=0)
-        # Set up the syncer to push from out_queue to the "link_text_queue" in Redis.
         self.syncer = Syncer(
             redis_client,
-            push_map=[(self.out_queue, "link_text", False, -1),
-                      (self.validation_queue, "seen_links", False, -1)],
             pull_map=[(self.link_queue, "verified_links", False, -1)],
             sync_period=sync_period
         )

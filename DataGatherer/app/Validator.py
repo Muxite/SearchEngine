@@ -1,7 +1,9 @@
 import hashlib
+import json
+import time
 import redis
 from queue import Queue
-# TIGHTEN THIS TIGTHTENM THIS
+import threading
 
 
 def hash_text(text):
@@ -14,30 +16,35 @@ def hash_text(text):
 
 
 class Validator:
-    def __init__(self, redis, mysql):
-        """
-        Initialize validation process that moves unseen links to a view queue.
-        Cross-references with Redis and MySQL as part of DataGatherer.
-        """
+    def __init__(self, redis, queue, interval=1):
         self.redis = redis
-        self.mysql = mysql
-        self.pipeline = []
-        self.cursor = self.mysql.cursor()
-        self.verified_links = Queue()
-        self.
-        self.set = None
+        self.queue = queue
+        self.interval = interval
+        self.running = False
+        self.thread = None
 
-    def validate(self, link, text):
-        """
-        Run pipeline on a link.
-        :param link: The link to validate.
-        :param text: The text content.
-        :return:
-        """
-        for check in self.pipeline:
-            if check(link, text):
-                break
+    def sync(self):
+        while self.running:
+            link = self.queue.get_nowait()
+            if not link:
+                time.sleep(self.interval)
+                continue
 
+            try:
+                if not self.redis.sismember("seen_links", link):
+                    self.redis.sadd("seen_links:set", link)
+                    self.redis.rpush("verified_links:list", link)
 
+            except Exception as e:
+                print("Error processing:", e)
 
-    def
+    def start(self):
+        if not self.running:
+            self.running = True
+            self.thread = threading.Thread(target=self.sync, daemon=True)
+            self.thread.start()
+
+    def stop(self):
+        self.running = False
+        if self.thread:
+            self.thread.join()

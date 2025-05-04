@@ -101,7 +101,6 @@ class Scraper:
         :return: None
         """
 
-
         loops = 0
         while True:
             # periodically check for start/shutdown signal

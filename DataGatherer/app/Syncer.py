@@ -25,22 +25,28 @@ class Syncer:
     def sync(self):
         """
         Continuously syncs data between queues and Redis.
-        Tuple format is: (queue, redis name, copy only?, item limit).
+        Tuple format is: (queue, redis name, copy only?, item limit, sync type).
+        No sync type for pulling.
         An -1 item limit means there is no limit.
         """
         while self.running:
 
             # push data to Redis until cannot pull more.
-            for q, redis_key, copy_only, limit in self.push_map:
+            for q, redis_key, copy_only, limit, sync_type in self.push_map:
                 loops = 0
                 while True:
                     try:
                         data = q.get_nowait()
+                        dump = json.dumps(data)
+                        if sync_type != "queue":
+                            if not self.redis_client.sismember(redis_key, dump):
+                                self.redis_client.sadd(redis_key + ":set", dump)
+                        if sync_type != "set":
+                            self.redis_client.rpush(redis_key + ":list", dump)
+
                         if copy_only:
-                            self.redis_client.rpush(redis_key, json.dumps(data))
                             q.put(data)
-                        else:
-                            self.redis_client.rpush(redis_key, json.dumps(data))
+
                         loops += 1
 
                         if limit != -1 and loops >= limit:
@@ -54,9 +60,9 @@ class Syncer:
                 while True:
                     try:
                         if copy_only:
-                            data = self.redis_client.lindex(redis_key, 0)
+                            data = self.redis_client.lindex(redis_key+":list", 0)
                         else:
-                            data = self.redis_client.lpop(redis_key)
+                            data = self.redis_client.lpop(redis_key+":list")
                         if data:
                             q.put(json.loads(data))
                             loops += 1
