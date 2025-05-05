@@ -25,13 +25,15 @@ services:
     build:
       context: ./DataGatherer
       dockerfile: Dockerfile
+    volumes:
+      - ./Datagatherer/app:/app
+      - ./shared:/app/shared
     restart: on-failure
     entrypoint: ["python", "DataGatherer.py"]
     command: [
       "--seed", "https://en.wikipedia.org/wiki/Main_Page",
       "--timeout", "60",
       "--scrapers", "8",
-      "--validators", "1",
       "--redis_host", "cache",
       "--redis_port", "6379"
     ]
@@ -40,6 +42,9 @@ services:
     build:
       context: ./Indexer
       dockerfile: Dockerfile
+    volumes:
+      - ./Indexer/app:/app
+      - ./shared/utils:/app/shared
     entrypoint: ["python", "Indexer.py"]
     command: [
       "--timeout", "240",
@@ -51,6 +56,9 @@ services:
     build:
       context: ./Databaser
       dockerfile: Dockerfile
+    volumes:
+      - ./Databaser/app:/app
+      - ./shared/utils:/app
     depends_on:
       mysql:
         condition: service_healthy

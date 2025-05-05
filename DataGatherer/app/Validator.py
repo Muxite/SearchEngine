@@ -16,10 +16,17 @@ def hash_text(text):
 
 
 class Validator:
-    def __init__(self, redis, queue, interval=1):
-        self.redis = redis
+    def __init__(self, redis_client, queue, sync_period=1):
+        """
+        Initializes Syncer agent.
+
+        :param redis_client: redis_client client instance.
+        :param queue: Queue to take data out of.
+        :param sync_period: Time to wait between syncs.
+        """
+        self.redis_client = redis_client
         self.queue = queue
-        self.interval = interval
+        self.sync_period = sync_period
         self.running = False
         self.thread = None
 
@@ -27,13 +34,13 @@ class Validator:
         while self.running:
             link = self.queue.get_nowait()
             if not link:
-                time.sleep(self.interval)
+                time.sleep(self.sync_period)
                 continue
 
             try:
-                if not self.redis.sismember("seen_links", link):
-                    self.redis.sadd("seen_links:set", link)
-                    self.redis.rpush("verified_links:list", link)
+                if not self.redis_client.sismember("seen_links:set", link):
+                    self.redis_client.sadd("seen_links:set", link)
+                    self.redis_client.rpush("target_links:list", link)
 
             except Exception as e:
                 print("Error processing:", e)

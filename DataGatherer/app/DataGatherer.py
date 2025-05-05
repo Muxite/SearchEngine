@@ -3,8 +3,8 @@ from queue import Queue
 import time
 from utils import delayed_action
 import redis
-from Syncer import Syncer
-import Validator as v
+from shared.utils.Syncer import Syncer
+from Validator import Validator
 import argparse
 
 def parse_args():
@@ -33,15 +33,16 @@ class DataGatherer:
         """
 
         self.syncer = None
+        self.validator = None
         self.out_queue = Queue()
         self.timeout = timeout
         self.running = False
-        self.link_queue = Queue()
-        self.link_queue.put(seed)
-        self.validate_queue = Queue()
-        self.Scraper = ScraperManager(self.link_queue,
+        self.target_link_queue = Queue()
+        self.target_link_queue.put(seed)
+        self.potential_link_queue = Queue()
+        self.Scraper = ScraperManager(self.target_link_queue,
                                       self.out_queue,
-                                      self.validate_queue,
+                                      self.potential_link_queue,
                                       scraper_timeout,
         )
         self.scrapers = scrapers
@@ -49,15 +50,26 @@ class DataGatherer:
         self.start()
 
     def connect_redis(self, host, port, sync_period):
-        """Start agent that syncs to redis."""
+        """
+        Start agent that syncs to redis.
+        Queue of potential links is converted to target links in Redis, then synced.
+        """
 
         redis_client = redis.Redis(host=host, port=port, db=0)
         self.syncer = Syncer(
             redis_client,
-            pull_map=[(self.link_queue, "verified_links", False, -1)],
+            push_map=[(self.out_queue, "link_text", False, -1, "queue")],
+            pull_map=[(self.target_link_queue, "target_links", False, -1)],
             sync_period=sync_period
         )
         self.syncer.start()
+
+        self.validator = Validator(
+            redis_client,
+            self.potential_link_queue,
+            sync_period=sync_period
+        )
+        self.validator.start()
 
     def update_threads(self, scrapers):
         """
@@ -89,12 +101,13 @@ class DataGatherer:
         self.Scraper.update_num(0)
         self.scrapers = 0
 
-        # **********EDITS NEEDED AFTER VALIDATOR&&%&@#(%&@(*&%(@
-        time.sleep(5)
+        time.sleep(10)
 
         if self.syncer:
             self.syncer.stop()
 
+        if self.validator:
+            self.validator.stop()
 
 def run():
     args = parse_args()
