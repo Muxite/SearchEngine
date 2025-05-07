@@ -59,7 +59,7 @@ class DataGatherer:
         self.syncer = Syncer(
             redis_client,
             push_map=[(self.out_queue, "link_text", False, -1, "queue")],
-            pull_map=[(self.target_link_queue, "target_links", False, -1)],
+            pull_map=[(self.target_link_queue, "target_links", False, self.scrapers)],
             sync_period=sync_period
         )
         self.syncer.start()
@@ -99,7 +99,6 @@ class DataGatherer:
         """
         self.running = False
         self.Scraper.update_num(0)
-        self.scrapers = 0
 
         time.sleep(10)
 

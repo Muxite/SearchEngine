@@ -1,25 +1,25 @@
 services:
   cache:
-    image: redis:6.2-alpine
+    image: redis:latest
     restart: always
     ports:
       - "6379:6379"
 
-  mysql:
-    image: "mysql:5.7"
-    environment:
-      MYSQL_ROOT_PASSWORD: "pw"
-      MYSQL_DATABASE: "db"
-      MYSQL_USER: "user"
-      MYSQL_PASSWORD: "pw"
-    ports:
-      - "3306:3306"
-    healthcheck:
-      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
-      interval: 10s
-      retries: 5
-      start_period: 20s
-      timeout: 5s
+#  mysql:
+#    image: "mysql:5.7"
+#    environment:
+#      MYSQL_ROOT_PASSWORD: "pw"
+#      MYSQL_DATABASE: "db"
+#      MYSQL_USER: "user"
+#      MYSQL_PASSWORD: "pw"
+#    ports:
+#      - "3306:3306"
+#    healthcheck:
+#      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+#      interval: 10s
+#      retries: 5
+#      start_period: 20s
+#      timeout: 5s
 
   datagatherer:
     build:
@@ -32,8 +32,8 @@ services:
     entrypoint: ["python", "DataGatherer.py"]
     command: [
       "--seed", "https://en.wikipedia.org/wiki/Main_Page",
-      "--timeout", "60",
-      "--scrapers", "8",
+      "--timeout", "14400",
+      "--scrapers", "4",
       "--redis_host", "cache",
       "--redis_port", "6379"
     ]
@@ -44,33 +44,33 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./Indexer/app:/app
-      - ./shared/utils:/app/shared
+      - ./shared:/app/shared
     entrypoint: ["python", "Indexer.py"]
     command: [
-      "--timeout", "240",
+      "--timeout", "14600",
       "--redis_host", "cache",
       "--redis_port", "6379"
     ]
 
-  databaser:
-    build:
-      context: ./Databaser
-      dockerfile: Dockerfile
-    volumes:
-      - ./Databaser/app:/app
-      - ./shared/utils:/app
-    depends_on:
-      mysql:
-        condition: service_healthy
-    entrypoint: ["python", "Databaser.py"]
-    command: [
-      "--timeout", "240",
-      "--sync_period", "15",
-      "--redis_host", "cache",
-      "--redis_port", "6379",
-      "--mysql_host", "mysql",
-      "--mysql_port", "3306",
-      "--mysql_user", "user",
-      "--mysql_password", "pw",
-      "--mysql_database", "db"
-    ]
+#  databaser:
+#    build:
+#      context: ./Databaser
+#      dockerfile: Dockerfile
+#    volumes:
+#      - ./Databaser/app:/app
+#      - ./shared:/app/shared
+#    depends_on:
+#      mysql:
+#        condition: service_healthy
+#    entrypoint: ["python", "Databaser.py"]
+#    command: [
+#      "--timeout", "360",
+#      "--sync_period", "15",
+#      "--redis_host", "cache",
+#      "--redis_port", "6379",
+#      "--mysql_host", "mysql",
+#      "--mysql_port", "3306",
+#      "--mysql_user", "user",
+#      "--mysql_password", "pw",
+#      "--mysql_database", "db"
+#    ]

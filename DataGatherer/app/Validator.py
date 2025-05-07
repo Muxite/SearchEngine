@@ -2,7 +2,7 @@ import hashlib
 import json
 import time
 import redis
-from queue import Queue
+from queue import Queue, Empty
 import threading
 
 
@@ -32,15 +32,18 @@ class Validator:
 
     def sync(self):
         while self.running:
-            link = self.queue.get_nowait()
+            try:
+                link = self.queue.get(self.sync_period)
+            except Empty:
+                continue
+
             if not link:
-                time.sleep(self.sync_period)
                 continue
 
             try:
-                if not self.redis_client.sismember("seen_links:set", link):
-                    self.redis_client.sadd("seen_links:set", link)
-                    self.redis_client.rpush("target_links:list", link)
+                if link.strip() and not self.redis_client.sismember("seen_links:set", json.dumps(link)):
+                    self.redis_client.sadd("seen_links:set", json.dumps(link))
+                    self.redis_client.rpush("target_links:list", json.dumps(link))
 
             except Exception as e:
                 print("Error processing:", e)

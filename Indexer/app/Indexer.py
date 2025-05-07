@@ -1,3 +1,4 @@
+import json
 from collections import Counter
 from math import log
 import threading
@@ -41,14 +42,13 @@ class Indexer:
     def __init__(self, timeout=120, worker_timeout=2):
         """
         Take a queue of link, text pairs and put them into a link, tag pair into an out queue.
-        :param redis_client: redis client to sync with.
-        :param in_queue: Queue of link text pairs.
-        :param out_queue: Queue of link tag pairs.
+        :param timeout: Class timeout in seconds.
+        :param worker_timeout: Workers timeout in seconds.
         """
         self.in_queue = queue.Queue()
         self.out_queue = queue.Queue()
         self.lock = threading.Lock()
-        self.total_counts = {}
+        self.document_frequency = {}
         self.document_count = 0
         self.common_words = [
             "the", "be", "to", "of", "and", "a", "in", "that", "have", "I",
@@ -67,7 +67,6 @@ class Indexer:
             "'", '"', '“', '”', '‘', '’', '<', '>', '©', '®', '™', '$', '#', '@', '&', '^', '~', '|', '\\',
             '€', '£', '¥', '•', '¶', '…', '—', '›', '‹', '•', '...', '–'
         ]
-        self.redis_client = None
         self.syncer = None
         self.timeout = timeout
         self.active = False
@@ -78,9 +77,13 @@ class Indexer:
         """
         Start agent that syncs to redis.
         Link text is pulled, and pushed as link tags.
+        :param host: Host to connect to.
+        :param port: Port to connect to.
+        :param sync_period: Time between syncs.
         """
+        redis_client = redis.Redis(host=host, port=port, db=0)
         self.syncer = Syncer(
-            redis_client=self.redis_client,
+            redis_client=redis_client,
             push_map=[(self.out_queue, "link_tag", False, -1, "queue")],
             pull_map=[(self.in_queue, "link_text", False, -1)],
             sync_period=sync_period
@@ -88,6 +91,10 @@ class Indexer:
         self.syncer.start()
 
     def start(self, timeout):
+        """
+        Initiate Indexer.
+        :param timeout: Time until shutdown.
+        """
         self.active = True
         delayed_action(timeout, self.quit)
         thread = threading.Thread(
@@ -96,6 +103,9 @@ class Indexer:
         thread.start()
 
     def quit(self):
+        """
+        Exit the Indexer.
+        """
         self.active = False
         time.sleep(10)
         if self.syncer:
@@ -115,14 +125,15 @@ class Indexer:
         counts = Counter(words_list)
         if is_document:
             with self.lock:
+                self.document_count += 1
                 for term, value in counts.items():
-                    self.document_count += 1
-                    self.total_counts[term] = self.total_counts.get(term, 0) + value
+                    self.document_frequency[term] = self.document_frequency.get(term, 0) + value
 
         # Calculate scores per word in place.
         with self.lock:
             scores = {
-                word: (count / len(words_list)) * (log(self.document_count / (1 + self.total_counts[word])))
+                word: (count / len(words_list)) *
+                      (log((1 + self.document_count) / (1 + self.document_frequency[word])) + 1)
                 for word, count in counts.items()
             }
 

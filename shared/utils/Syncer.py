@@ -16,8 +16,8 @@ class Syncer:
         :param sync_period: Time to wait between syncs.
         """
         self.redis_client = redis_client
-        self.push_map = push_map
-        self.pull_map = pull_map
+        self.push_map = push_map or []
+        self.pull_map = pull_map or []
         self.sync_period = sync_period
         self.running = False
         self.thread = None
@@ -58,21 +58,24 @@ class Syncer:
             for q, redis_key, copy_only, limit in self.pull_map:
                 loops = 0
                 while True:
+                    if limit != -1 and loops >= limit:
+                        break
                     try:
                         if copy_only:
-                            data = self.redis_client.lindex(redis_key+":list", 0)
+                            data = self.redis_client.lindex(redis_key + ":list", loops)
                         else:
-                            data = self.redis_client.lpop(redis_key+":list")
+                            data = self.redis_client.lpop(redis_key + ":list")
                         if data:
-                            q.put(json.loads(data))
-                            loops += 1
+                            try:
+                                q.put(json.loads(data))
+                                loops += 1
+                            except json.decoder.JSONDecodeError:
+                                print("Syncer json decode error.")
                         else:
                             break
 
-                        if limit != -1 and loops >= limit:
-                            break
-
-                    except redis.exceptions.RedisError:
+                    except redis.exceptions.RedisError as e:
+                        print("Redis error during pull:", e)
                         break
 
             time.sleep(self.sync_period)
