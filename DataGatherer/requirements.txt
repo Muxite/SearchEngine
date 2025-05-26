@@ -2,3 +2,5 @@ selenium
 webdriver_manager
 pytest
 redis
+aiohttp
+beautifulsoup4

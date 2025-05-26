@@ -21,7 +21,7 @@ class Scraper:
         :param in_queue: The queue of links.
         :param texts_queue: Output queue for text.
         :param validate_queue: Output queue of raw links.
-        :param timeout: Seconds to wait
+        :param timeout: Seconds to wait.
         """
         self.name = name
         self.toggle_lock = lock  # lock for scrapers

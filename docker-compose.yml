@@ -33,7 +33,7 @@ services:
     command: [
       "--seed", "https://en.wikipedia.org/wiki/Main_Page",
       "--timeout", "14400",
-      "--scrapers", "4",
+      "--scrapers", "12",
       "--redis_host", "cache",
       "--redis_port", "6379"
     ]

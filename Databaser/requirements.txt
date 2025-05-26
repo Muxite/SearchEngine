@@ -1,3 +1,5 @@
 pytest
 redis
 mysql.connector
+aiohttp
+beautifulsoup4

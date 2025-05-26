@@ -1,9 +1,8 @@
-from Crawler import Crawler
+from ScraperManager import ScraperManager
+from queue import Queue
 import time
 from utils import delayed_action
 import redis
-import asyncio
-from queue import Queue
 from shared.utils.Syncer import Syncer
 from Validator import Validator
 import argparse
@@ -38,15 +37,17 @@ class DataGatherer:
         self.out_queue = Queue()
         self.timeout = timeout
         self.running = False
-        self.scrapers = scrapers
         self.target_link_queue = Queue()
-        self.target_link_queue.put_nowait(seed)
+        self.target_link_queue.put(seed)
         self.potential_link_queue = Queue()
-        self.crawler = Crawler(self.target_link_queue,
+        self.Scraper = ScraperManager(self.target_link_queue,
                                       self.out_queue,
                                       self.potential_link_queue,
                                       scraper_timeout,
         )
+        self.scrapers = scrapers
+        self.update_threads(self.scrapers)
+        self.start()
 
     def connect_redis(self, host, port, sync_period):
         """
@@ -70,28 +71,36 @@ class DataGatherer:
         )
         self.validator.start()
 
-    async def start(self):
+    def update_threads(self, scrapers):
+        """
+        Prep threads, close some threads etc.
+        :param scrapers: How many scrapers
+        """
+        self.Scraper.update_num(self.scrapers)
+        self.scrapers = scrapers
+
+    def start(self):
         """
         Begin gathering links if not already running.
         """
-        print("DataGatherer started.")
         if self.running:
             return
 
         self.running = True
-        await self.crawler.start(self.scrapers)
-        await asyncio.sleep(self.timeout)
-        await self.quit()
+        self.Scraper.send_order_all("quit", False)
+        self.Scraper.send_order_all("operating", True)
 
-    async def quit(self):
+        delayed_action(self.timeout, self.quit)
+
+    def quit(self):
         """
         Safely exit the program with the ability to save all data.
         Clears the "limbo" queue, and puts all links in the link queue.
         """
         self.running = False
-        await self.crawler.stop()
+        self.Scraper.update_num(0)
 
-        await asyncio.sleep(10)
+        time.sleep(10)
 
         if self.syncer:
             self.syncer.stop()
@@ -110,8 +119,6 @@ def run():
 
     if args.redis_host != "none":
         datagatherer.connect_redis(args.redis_host, args.redis_port, sync_period=5)
-
-    asyncio.run(datagatherer.start())
 
 
 if __name__ == "__main__":
